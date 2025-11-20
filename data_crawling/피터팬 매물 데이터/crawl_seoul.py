@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from global_land_mask import globe
+import time
 
 # ======================================================
 # 1. [설정] 서울 전역 좌표 및 5개 그룹 정의
@@ -331,7 +332,7 @@ async def run_zone_batch(zone_name):
         {"name": "원,투룸", "base": "https://www.peterpanz.com/onetworoom", "filt": AREA_FILTER_PREFIX + 'buildingType;["원,투룸"]', "out": f"{zone_name}_원투룸.json"},
         {"name": "빌라,주택", "base": "https://www.peterpanz.com/villa", "filt": AREA_FILTER_PREFIX + 'buildingType;["빌라","주택"]', "out": f"{zone_name}_빌라주택.json"},
         {"name": "오피스텔", "base": "https://www.peterpanz.com/officetel", "filt": AREA_FILTER_PREFIX + 'buildingType;["오피스텔"]', "out": f"{zone_name}_오피스텔.json"},
-        {"name": "상가∙사무실∙건물∙공장∙토지", "base": "https://www.peterpanz.com/store", "filt": AREA_FILTER_PREFIX + 'buildingType;["상가","사무실","건물","공장","토지"]', "out": f"{zone_name}_상가.json"}
+        # {"name": "상가∙사무실∙건물∙공장∙토지", "base": "https://www.peterpanz.com/store", "filt": AREA_FILTER_PREFIX + 'buildingType;["상가","사무실","건물","공장","토지"]', "out": f"{zone_name}_상가.json"}
     ]
 
     coordinates = generate_coordinate_grid(zone_name)
@@ -406,6 +407,10 @@ async def run_zone_batch(zone_name):
 # 5. 실행부
 # ======================================================
 if __name__ == "__main__":
+
+    # --- [신규] 시간 측정 시작 ---
+    TOTAL_START_TIME = time.time()
+
     if len(sys.argv) > 1:
         TERMINAL_NUMBER = int(sys.argv[1])
     else:
@@ -421,7 +426,7 @@ if __name__ == "__main__":
     }
 
     target_zones_list = GROUPS.get(TERMINAL_NUMBER, [])
-    
+
     if not target_zones_list:
         print(f"❌ 잘못된 터미널 번호입니다: {TERMINAL_NUMBER} (1~5 사이 입력)")
     else:
@@ -430,5 +435,12 @@ if __name__ == "__main__":
         
         for zone in target_zones_list:
             asyncio.run(run_zone_batch(zone))
+
+        # --- [신규] 시간 측정 종료 및 출력 ---
+        TOTAL_END_TIME = time.time()
+        elapsed = TOTAL_END_TIME - TOTAL_START_TIME
+        hours, rem = divmod(elapsed, 3600)
+        minutes, seconds = divmod(rem, 60)
             
         print(f"========== [터미널 {TERMINAL_NUMBER}] 모든 작업 종료 ==========")
+        print(f"⏱️ 총 소요 시간: {int(hours)}시간 {int(minutes)}분 {int(seconds)}초")
