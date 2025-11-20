@@ -129,29 +129,56 @@ async def scrape_detail_page(new_page):
     page_url = new_page.url
     listing_id = page_url.split('/house/')[-1].split('?')[0] if '/house/' in page_url else None
     
-    # [수정] 모든 키값을 한글로 변경
     final_data = {
-        '중개사_정보': {},         # agent_info -> 중개사_정보 (맨 위로 이동 요청 반영)
-        '매물번호': listing_id,    # listing_id
-        '매물_URL': page_url,      # url
-        '주소_정보': {},           # address_info
-        '평면도_URL': [],          # floor_plan_urls
-        '거래_정보': {},           # transaction_info
-        '매물_정보': {},           # property_info
-        '추가_옵션': [],           # additional_options
-        '주변_학교': [],           # nearby_schools
-        '상세_설명': ""            # detail_description
+        '중개사_정보': {},         
+        '매물번호': listing_id,    
+        '매물_URL': page_url,      
+        '매물_이미지': [],         # <--- [신규] 매물 URL 바로 아래에 추가됨
+        '주소_정보': {},           
+        '평면도_URL': [],          
+        '거래_정보': {},           
+        '매물_정보': {},           
+        '추가_옵션': [],           
+        '주변_학교': [],           
+        '상세_설명': ""            
     }
     
-    # 1. 주소
+    # ======================================================
+    # ▼▼▼ [신규] 1. 매물 이미지 (Carousel) 전체 수집 ▼▼▼
+    # ======================================================
+    try:
+        # 사진 속 구조: .carousel-inner > .item > img.photo
+        # 모든 슬라이드 이미지를 찾습니다.
+        img_elements = await new_page.locator(".carousel-inner .item img.photo").all()
+        
+        for img in img_elements:
+            src = await img.get_attribute("src")
+            if src and src not in final_data['매물_이미지']:
+                final_data['매물_이미지'].append(src)
+                
+        # (혹시 로딩이 안 됐을 경우를 대비해 container 대기 후 재시도)
+        if not final_data['매물_이미지']:
+            await new_page.wait_for_selector(".carousel-inner", timeout=2000)
+            img_elements = await new_page.locator(".carousel-inner img").all()
+            for img in img_elements:
+                src = await img.get_attribute("src")
+                if src and src not in final_data['매물_이미지']:
+                    final_data['매물_이미지'].append(src)
+                    
+    except Exception as e:
+        # 이미지가 없거나 추출 실패해도 치명적이지 않으므로 넘어감
+        # print(f"  -> (이미지 추출 오류) {e}") 
+        pass
+    # ======================================================
+
+    # 2. 주소
     try:
         addr_sel = ".div-detail-house-address-type > span, span.address"
         await new_page.wait_for_selector(addr_sel, timeout=3000)
-        # full_address -> 전체주소
         final_data['주소_정보']['전체주소'] = (await new_page.locator(addr_sel).first.inner_text()).strip()
     except: pass
 
-    # 2. 중개사 (내부 키값도 한글로 변경)
+    # 3. 중개사 (내부 키값도 한글로 변경)
     try:
         sb = new_page.locator(".sidebar-content").first
         if await sb.count() > 0:
@@ -183,7 +210,7 @@ async def scrape_detail_page(new_page):
                 except: pass
     except: pass
 
-    # 3. 평면도
+    # 4. 평면도
     try:
         plan_imgs = await new_page.locator("div[id^='aptPlanImage'] img").all()
         for img in plan_imgs:
@@ -198,7 +225,7 @@ async def scrape_detail_page(new_page):
                     final_data['평면도_URL'].append(src)
     except: pass
 
-    # 4. 상세 정보
+    # 5. 상세 정보
     rows = await new_page.locator(".detail-table-row").all()
     for r in rows:
         try:
@@ -208,7 +235,7 @@ async def scrape_detail_page(new_page):
             else: final_data['매물_정보'][k] = v
         except: pass
 
-    # 5. 추가옵션
+    # 6. 추가옵션
     try:
         options_container = new_page.locator(".detail-option-table dd")
         if await options_container.count() > 0:
@@ -219,7 +246,7 @@ async def scrape_detail_page(new_page):
                     final_data['추가_옵션'].append(text.strip())
     except: pass
 
-    # 6. 주변학교
+    # 7. 주변학교
     try:
         school_header = new_page.locator("h3", has_text="주변학교")
         if await school_header.count() > 0:
@@ -238,7 +265,7 @@ async def scrape_detail_page(new_page):
                 except: pass
     except: pass
 
-    # 7. 상세설명
+    # 8. 상세설명
     try:
         desc_selector = "#description-text"
         if await new_page.locator(desc_selector).count() > 0:
