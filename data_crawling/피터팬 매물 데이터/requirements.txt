@@ -1,0 +1,6 @@
+playwright
+selenium
+requests
+beautifulsoup4
+pandas
+global-land-mask
