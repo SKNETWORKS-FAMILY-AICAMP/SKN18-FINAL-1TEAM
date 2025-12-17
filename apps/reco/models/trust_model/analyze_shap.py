@@ -73,8 +73,12 @@ def get_shap_explainer(model, X_background):
             print("   - TreeExplainer 사용")
             explainer = shap.TreeExplainer(model)
         elif model_type in linear_models:
-            print("   - LinearExplainer 사용")
-            explainer = shap.LinearExplainer(model, X_background)
+            # LinearExplainer는 Log-odds(Raw score)를 반환하므로, 
+            # README와 동일한 '확률(Probability)' 단위를 얻기 위해 KernelExplainer + predict_proba 사용 변경
+            print("   - KernelExplainer 사용 (확률 단위 변환)")
+            # 속도를 위해 백그라운드 샘플링 (100개)
+            background_sample = shap.sample(X_background, min(100, len(X_background)))
+            explainer = shap.KernelExplainer(model.predict_proba, background_sample)
         else:
             print("   - KernelExplainer 사용 (일반 모델)")
             # KernelExplainer는 느리므로 샘플링된 배경 데이터 사용
