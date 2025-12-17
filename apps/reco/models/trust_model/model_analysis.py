@@ -16,7 +16,7 @@ matplotlib.rcParams['font.family'] = 'Malgun Gothic'
 matplotlib.rcParams['axes.unicode_minus'] = False
 
 # 시각화 저장 경로
-SAVE_DIR = Path("apps/reco/models/trust_model/analysisㅈ_plots")
+SAVE_DIR = Path("apps/reco/models/trust_model/analysis_plots")
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -300,9 +300,15 @@ def show_confusion_matrix_summary():
     from sklearn.metrics import confusion_matrix
     import seaborn as sns
     
-    # CatBoost 혼동 행렬 시각화
-    if 'CatBoost' in models:
-        y_pred = models['CatBoost'].predict(X_test)
+    # 혼동 행렬 시각화 (LogisticRegression 우선, 없으면 CatBoost)
+    target_model_name = None
+    if 'LogisticRegression' in models:
+        target_model_name = 'LogisticRegression'
+    elif 'CatBoost' in models:
+        target_model_name = 'CatBoost'
+        
+    if target_model_name:
+        y_pred = models[target_model_name].predict(X_test)
         cm = confusion_matrix(y_test, y_pred)
         
         fig, ax = plt.subplots(figsize=(8, 6))
@@ -311,7 +317,7 @@ def show_confusion_matrix_summary():
                    annot_kws={'size': 16})
         ax.set_xlabel('예측 등급', fontsize=12)
         ax.set_ylabel('실제 등급', fontsize=12)
-        ax.set_title('CatBoost 혼동 행렬', fontsize=14, fontweight='bold')
+        ax.set_title(f'{target_model_name} 혼동 행렬', fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(SAVE_DIR / '4_confusion_matrix.png', dpi=150)
         plt.close()
@@ -351,11 +357,20 @@ def show_feature_target_correlation():
         print("⚠️ 타겟 컬럼('신뢰도등급')을 찾을 수 없습니다.")
         return
 
+    # 학습에 사용된 실제 피처 리스트 로드
+    data = load_model_data()
+    used_features = data['feature_names']
+
     # 데이터 결합
     full_df = pd.concat([features_df, target_series.rename('Target(신뢰도)')], axis=1)
     
-    # 숫자형 컬럼만 선택 (문자열 컬럼 제외)
-    full_df = full_df.select_dtypes(include=[np.number])
+    # 학습에 사용된 피처 + 타겟만 선택
+    target_col = 'Target(신뢰도)'
+    cols_to_use = list(used_features) + [target_col]
+    
+    # 존재하지 않는 컬럼 방어 코드
+    valid_cols = [c for c in cols_to_use if c in full_df.columns]
+    full_df = full_df[valid_cols]
 
     # 상관관계 계산
     corr = full_df.corr(method='pearson')
