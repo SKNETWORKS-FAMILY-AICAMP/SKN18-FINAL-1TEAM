@@ -30,11 +30,6 @@ def evaluate_model(models, X_train, y_train, X_test, y_test, cv_results=None):
     """
     모델별 평가 수행 (훈련/테스트/CV 정확도 모두 출력)
     """
-
-    # --- 추가된 부분: NaN 강제 처리 ---
-    X_train = pd.DataFrame(X_train).replace([np.inf, -np.inf], np.nan).fillna(0)
-    X_test = pd.DataFrame(X_test).replace([np.inf, -np.inf], np.nan).fillna(0)
-
     results = []
 
     for name, model in models.items():

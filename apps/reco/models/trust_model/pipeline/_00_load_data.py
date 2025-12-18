@@ -57,11 +57,11 @@ def basic_preprocessing(df: pd.DataFrame) -> pd.DataFrame:
     print(f"\n🧹 [2단계] 기본 전처리 (거래완료 & 등록매물 NaN 제거)")
 
     # 문자열 "건" 제거 및 숫자형 변환
-    df["거래완료_숫자"] = pd.to_numeric(df["거래완료"].str.replace("건", ""), errors="coerce")
-    df["등록매물_숫자"] = pd.to_numeric(df["등록매물"].str.replace("건", ""), errors="coerce")
+    df["거래완료"] = pd.to_numeric(df["거래완료"].str.replace("건", ""), errors="coerce")
+    df["등록매물"] = pd.to_numeric(df["등록매물"].str.replace("건", ""), errors="coerce")
 
     before = len(df)
-    df = df.dropna(subset=["거래완료_숫자", "등록매물_숫자"])
+    df = df.dropna(subset=["거래완료", "등록매물"])
     after = len(df)
 
     print(f"   제거된 행 수: {before - after:,}개")
