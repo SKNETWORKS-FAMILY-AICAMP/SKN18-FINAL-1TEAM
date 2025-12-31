@@ -11,7 +11,7 @@ const JOB_OPTIONS = [
   { value: "프리랜서", label: "프리랜서" },
   { value: "자영업", label: "자영업자" },
 ];
-const FEATURES = ["주변 공원", "편의시설", "대중교통", "치안/안전", "허위매물"];
+const FEATURES = ["치안/안전", "편의시설", "반려동물", "대중교통", "문화시설"];
 const RANKS = [1, 2, 3];
 
 interface Props {

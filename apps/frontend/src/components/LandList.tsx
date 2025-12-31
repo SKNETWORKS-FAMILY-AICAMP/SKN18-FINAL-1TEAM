@@ -12,13 +12,14 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Land, LandFilterParams } from '../types/land';
 import { fetchLands } from '../api/landApi';
 import { fetchWishlist, addWishlist, removeWishlist } from '../api/wishlistApi';
 import { useSession } from 'next-auth/react';
+import axiosInstance from '@/lib/axios';
 
 
 interface LandListProps {
@@ -27,6 +28,21 @@ interface LandListProps {
 }
 
 const ITEMS_PER_PAGE = 5; // 페이지당 5개 표시 (화면에 맞춤)
+const TEMPERATURE_MIN = 13;
+const TEMPERATURE_MAX = 60;
+const PREFERENCE_STORAGE_KEY = 'preferenceSurveyPriorities';
+const FEATURE_KEY_MAP: Record<string, keyof NonNullable<Land['temperatures']>> = {
+    '치안/안전': 'safety',
+    '편의시설': 'convenience',
+    '반려동물': 'pet',
+    '대중교통': 'traffic',
+    '문화시설': 'culture',
+};
+const RANK_WEIGHT: Record<number, number> = {
+    1: 3,
+    2: 2,
+    3: 1,
+};
 
 // sessionStorage에서 페이지 상태 로드
 const loadPageStateFromStorage = () => {
@@ -45,6 +61,7 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
     const [lands, setLands] = useState<Land[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
+    const [preferencePriorities, setPreferencePriorities] = useState<Record<string, number>>({});
 
     // 페이지 상태를 sessionStorage에서 로드
     const savedPageState = loadPageStateFromStorage();
@@ -88,6 +105,31 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
         loadLands();
     }, [filterParams, recommendedLandIds]);
 
+    useEffect(() => {
+        const loadPreferences = async () => {
+            if (!session) {
+                try {
+                    const stored = sessionStorage.getItem(PREFERENCE_STORAGE_KEY);
+                    setPreferencePriorities(stored ? JSON.parse(stored) : {});
+                } catch (err) {
+                    console.error('Failed to load preference survey from storage:', err);
+                    setPreferencePriorities({});
+                }
+                return;
+            }
+            try {
+                const response = await axiosInstance.get('/api/users/preference-survey/');
+                const preferenceData = response.data || {};
+                setPreferencePriorities(preferenceData.priorities ?? preferenceData.survey?.priorities ?? {});
+            } catch (err) {
+                console.error('Failed to fetch preference survey:', err);
+                setPreferencePriorities({});
+            }
+        };
+
+        loadPreferences();
+    }, [session]);
+
     // 필터가 변경되면 페이지를 1로 리셋 (첫 마운트 제외)
     useEffect(() => {
         // 저장된 필터와 현재 필터를 비교
@@ -128,11 +170,34 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
     }, [session]);
 
 
+    const normalizeTemperature = (value: number) => {
+        if (value <= TEMPERATURE_MIN) return 0;
+        if (value >= TEMPERATURE_MAX) return 1;
+        return (value - TEMPERATURE_MIN) / (TEMPERATURE_MAX - TEMPERATURE_MIN);
+    };
+
+    const scoreLand = (land: Land) => {
+        const temps = land.temperatures || {};
+        return Object.entries(preferencePriorities).reduce((sum, [label, rank]) => {
+            const key = FEATURE_KEY_MAP[label];
+            const tempValue = key ? temps[key] ?? 0 : 0;
+            const weight = RANK_WEIGHT[rank] ?? 0;
+            return sum + weight * normalizeTemperature(tempValue);
+        }, 0);
+    };
+
+    const sortedLands = useMemo(() => {
+        if (Object.keys(preferencePriorities).length === 0) {
+            return lands;
+        }
+        return [...lands].sort((a, b) => scoreLand(b) - scoreLand(a));
+    }, [lands, preferencePriorities]);
+
     // 페이지네이션 계산
-    const totalPages = Math.ceil(lands.length / ITEMS_PER_PAGE);
+    const totalPages = Math.ceil(sortedLands.length / ITEMS_PER_PAGE);
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
-    const currentLands = lands.slice(startIndex, endIndex);
+    const currentLands = sortedLands.slice(startIndex, endIndex);
 
     // 페이지 그룹 계산 (10개씩)
     const PAGES_PER_GROUP = 10;
@@ -258,7 +323,7 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-lg font-semibold text-[var(--color-primary)]">추천 매물</h3>
                     <span className="text-sm text-[var(--color-text-tertiary)]">
-                        총 {lands.length}개
+                        총 {sortedLands.length}개
                     </span>
                 </div>
 
