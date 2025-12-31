@@ -65,16 +65,6 @@ const Footer: React.FC = () => {
                 final7333@gmail.com
               </Link>
             </div>
-            <div className="flex gap-1 justify-center">
-              <span className="font-medium text-slate-500">GITHUB</span>
-              <Link
-                href="https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN18-FINAL-1TEAM"
-                target="_blank"
-                className="hover:text-cyan-400 transition-colors"
-              >
-                @GoZip
-              </Link>
-            </div>
           </div>
 
           {/* 하단 저작권 문구 */}

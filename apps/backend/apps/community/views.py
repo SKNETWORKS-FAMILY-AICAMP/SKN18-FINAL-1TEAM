@@ -21,6 +21,7 @@ class CommunityPostListCreateView(generics.ListCreateAPIView):
     - POST: 새 게시글 작성 (로그인 필요)
     """
     permission_classes = [IsAuthenticatedOrReadOnly]
+    pagination_class = None
     serializer_class = CommunityPostListSerializer
 
     def get_serializer_class(self):

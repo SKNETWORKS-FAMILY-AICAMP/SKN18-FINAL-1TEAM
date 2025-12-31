@@ -37,6 +37,17 @@ export async function fetchLandById(id: string): Promise<Land> {
     return response.json();
 }
 
+export async function fetchSimilarListings(landId: string): Promise<Land[]> {
+    const response = await fetch(`${API_BASE_URL}/api/listings/lands/${landId}/similar_listings/`);
+
+    if (!response.ok) {
+        throw new Error('Failed to fetch similar listings');
+    }
+
+    const data = await response.json();
+    return data.results || [];
+}
+
 export interface LandLocation {
     id: string;
     latitude: number;

@@ -14,12 +14,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import Image from 'next/image';
 import LandDetail from '@/components/LandDetail';
 import Map from '@/components/Map';
 import MarkerInfo from '@/components/MarkerInfo';
 import LandList from '@/components/LandList';
 import { fetchCommunityPosts } from '@/api/communityApi';
+import { fetchSimilarListings } from '@/api/landApi';
+import { Land } from '@/types/land';
 
 interface CommunityPost {
     id: string;
@@ -36,12 +39,15 @@ interface CommunityPost {
 
 export default function LandDetailPage() {
     const params = useParams();
+    const router = useRouter();
     const id = params.id as string;
     const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([]);
     const [loadingPosts, setLoadingPosts] = useState(true);
     const [activeMapCategories, setActiveMapCategories] = useState<Set<string>>(new Set());
     const [currentPostIndex, setCurrentPostIndex] = useState(0);
     const [landDong, setLandDong] = useState<string>('');
+    const [similarListings, setSimilarListings] = useState<Land[]>([]);
+    const [similarLoading, setSimilarLoading] = useState(false);
 
     // 커뮤니티 게시글 로드 - 매물의 행정동 기준으로 필터링
     useEffect(() => {
@@ -85,6 +91,23 @@ export default function LandDetailPage() {
         };
 
         loadCommunityPosts();
+    }, [id]);
+
+    // 유사 매물 로드
+    useEffect(() => {
+        const loadSimilar = async () => {
+            try {
+                setSimilarLoading(true);
+                const similar = await fetchSimilarListings(id);
+                setSimilarListings(similar);
+            } catch (err) {
+                console.error('Failed to fetch similar listings:', err);
+            } finally {
+                setSimilarLoading(false);
+            }
+        };
+
+        if (id) loadSimilar();
     }, [id]);
 
     // 시설 카테고리 클릭 핸들러
@@ -262,10 +285,67 @@ export default function LandDetailPage() {
                 )}
             </div>
 
-            {/* 비슷한 추천 매물 */}
+            {/* 현재 매물과 비슷한 추천 매물 top3 */}
             <div className="mt-8">
-                <h3 className="text-xl font-bold mb-4 text-slate-800">비슷한 추천 매물</h3>
-                <LandList />
+                <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+                    <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
+                        <h3 className="font-bold text-base">현재 매물과 비슷한 추천 매물</h3>
+                        <p className="text-xs text-blue-100 mt-1">
+                            같은 행정동 · 골드 등급 중개사 · 같은 거래유형 · 유사한 가격대 (±30%)
+                        </p>
+                    </div>
+                    <div className="p-4">
+                        {similarLoading ? (
+                            <div className="flex justify-center items-center py-12">
+                                <div className="w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                            </div>
+                        ) : similarListings.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                {similarListings.map((similarLand) => (
+                                    <div
+                                        key={similarLand.id}
+                                        onClick={() => router.push(`/landDetail/${similarLand.id}`)}
+                                        className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-shadow cursor-pointer bg-white"
+                                    >
+                                        <div className="relative aspect-video bg-gray-100">
+                                            <Image
+                                                src={similarLand.images?.[0] || similarLand.image || '/images/gozip_loading.png'}
+                                                alt={similarLand.title}
+                                                fill
+                                                sizes="(max-width: 768px) 100vw, 33vw"
+                                                className="object-cover"
+                                            />
+                                        </div>
+                                        <div className="p-3">
+                                            <p className="text-xs text-gray-500 mb-1 truncate">
+                                                {similarLand.address || '주소 정보 없음'}
+                                            </p>
+                                            <p className="text-lg font-bold text-blue-600 mb-1">
+                                                {similarLand.price || '-'}
+                                            </p>
+                                            <div className="flex items-center gap-2 text-xs text-gray-600">
+                                                <span>{similarLand.transaction_type || '-'}</span>
+                                                {similarLand.building_type && (
+                                                    <>
+                                                        <span>·</span>
+                                                        <span>{similarLand.building_type}</span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-12 text-gray-500">
+                                <p className="text-sm">조건에 맞는 유사 매물이 없습니다.</p>
+                                <p className="text-xs mt-2 text-gray-400">
+                                    같은 행정동의 골드 등급 중개사 매물 중 유사한 가격대의 매물을 찾지 못했습니다.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
         </div>
     );

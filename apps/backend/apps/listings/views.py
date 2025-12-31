@@ -398,4 +398,148 @@ class LandViewSet(viewsets.ReadOnlyModelViewSet):
                 'count': 0,
                 'facilities': []
             }, status=500)
+    
+    @action(detail=True, methods=['get'])
+    def similar_listings(self, request, pk=None):
+        """
+        현재 매물과 유사한 매물 top 3 반환 (온도 기반 content-based filtering)
+        
+        Algorithm:
+        1. 현재 매물의 온도 벡터 가져오기
+        2. 같은 지역(행정동) 매물 필터링
+        3. A등급 중개사 매물 필터링
+        4. 같은 거래유형 매물 필터링
+        5. 가격 범위 필터링 (±30% 범위)
+        6. 거리 기준 오름차순 정렬 후 top 3 반환
+        """
+        try:
+            # 현재 매물 조회
+            current_land = Land.objects.get(land_id=pk)
+        except Land.DoesNotExist:
+            return Response({'error': f'매물 ID {pk}를 찾을 수 없습니다.'}, status=404)
+        
+        # 현재 매물의 온도 데이터 가져오기
+        from .utils.temperature_utils import get_land_temperatures
+        current_temps = get_land_temperatures(current_land.land_num)
+        
+        # 온도 벡터 생성 (5차원)
+        current_vector = [
+            current_temps.get('safety', 36.5),
+            current_temps.get('convenience', 36.5),
+            current_temps.get('pet', 36.5),
+            current_temps.get('traffic', 36.5),
+            current_temps.get('culture', 36.5)
+        ]
+        
+        # 지역(행정동) 추출
+        current_dong = None
+        if current_land.address:
+            import re
+            # "서울특별시 강남구 역삼동" 형태에서 "역삼동" 추출
+            # 또는 "서울특별시 강남구 역삼1동" 같은 형태도 지원
+            match = re.search(r'([가-힣]+\d*동)', current_land.address)
+            if match:
+                current_dong = match.group(1)
+        
+        # 후보 매물 필터링: 같은 행정동 + A등급 중개사만 (자기 자신 제외)
+        candidate_queryset = Land.objects.exclude(land_id=current_land.land_id).select_related('landbroker')
+        
+        if current_dong:
+            candidate_queryset = candidate_queryset.filter(address__icontains=current_dong)
+        
+        # A등급 중개사 매물만 추천
+        candidate_queryset = candidate_queryset.filter(landbroker__trust_score='A')
+        
+        # 거래유형 필터링 (같은 거래유형만)
+        if current_land.deal_type:
+            candidate_queryset = candidate_queryset.filter(deal_type=current_land.deal_type)
+        
+        # 가격 범위 필터링 (±30% 범위)
+        # 거래유형에 따라 적절한 가격 컬럼 사용
+        if current_land.deal_type:
+            deal_type = current_land.deal_type.lower()
+            price_margin = 0.3  # ±30%
+            
+            if '월세' in deal_type or '단기임대' in deal_type:
+                # 월세/단기임대: 보증금 + 월세*100 기준
+                current_price = (current_land.deposit or 0) + (current_land.monthly_rent or 0) * 100
+                if current_price > 0:
+                    min_price = current_price * (1 - price_margin)
+                    max_price = current_price * (1 + price_margin)
+                    # 후보 매물의 환산 가격 계산 후 필터링 (Django ORM으로는 복잡하므로 나중에 Python에서 필터링)
+            elif '전세' in deal_type:
+                # 전세: 전세가 기준
+                current_price = current_land.jeonse_price or 0
+                if current_price > 0:
+                    min_price = current_price * (1 - price_margin)
+                    max_price = current_price * (1 + price_margin)
+                    candidate_queryset = candidate_queryset.filter(
+                        jeonse_price__gte=min_price,
+                        jeonse_price__lte=max_price
+                    )
+            elif '매매' in deal_type:
+                # 매매: 매매가 기준
+                current_price = current_land.sale_price or 0
+                if current_price > 0:
+                    min_price = current_price * (1 - price_margin)
+                    max_price = current_price * (1 + price_margin)
+                    candidate_queryset = candidate_queryset.filter(
+                        sale_price__gte=min_price,
+                        sale_price__lte=max_price
+                    )
+        
+        # 최대 100개로 제한 (성능 최적화)
+        candidates = list(candidate_queryset[:100])
+        
+        # 월세/단기임대의 경우 Python에서 추가 필터링
+        if current_land.deal_type and ('월세' in current_land.deal_type.lower() or '단기임대' in current_land.deal_type.lower()):
+            current_price = (current_land.deposit or 0) + (current_land.monthly_rent or 0) * 100
+            if current_price > 0:
+                min_price = current_price * (1 - 0.3)
+                max_price = current_price * (1 + 0.3)
+                candidates = [
+                    c for c in candidates
+                    if min_price <= ((c.deposit or 0) + (c.monthly_rent or 0) * 100) <= max_price
+                ]
+        
+        if not candidates:
+            logger.info(f"매물 {pk}에 대한 유사 매물 후보가 없습니다.")
+            return Response({'results': []})
+        
+        # 각 후보 매물과의 유사도 계산
+        import numpy as np
+        similarities = []
+        
+        for candidate in candidates:
+            candidate_temps = get_land_temperatures(candidate.land_num)
+            candidate_vector = [
+                candidate_temps.get('safety', 36.5),
+                candidate_temps.get('convenience', 36.5),
+                candidate_temps.get('pet', 36.5),
+                candidate_temps.get('traffic', 36.5),
+                candidate_temps.get('culture', 36.5)
+            ]
+            
+            # 유클리드 거리 계산
+            distance = np.linalg.norm(np.array(current_vector) - np.array(candidate_vector))
+            
+            similarities.append({
+                'land': candidate,
+                'distance': distance
+            })
+        
+        # 거리 기준 오름차순 정렬 (거리가 가까울수록 유사)
+        similarities.sort(key=lambda x: x['distance'])
+        
+        # Top 3 추출
+        top_3 = similarities[:3]
+        
+        # Serializer로 변환
+        similar_lands = [item['land'] for item in top_3]
+        serializer = self.get_serializer(similar_lands, many=True)
+        
+        logger.info(f"매물 {pk}에 대한 유사 매물 {len(similar_lands)}개 반환")
+        
+        return Response({'results': serializer.data})
+
 

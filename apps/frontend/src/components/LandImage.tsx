@@ -25,7 +25,7 @@ interface LandImageProps {
     isLiked?: boolean;
 }
 
-const DEFAULT_PLACEHOLDER = '/images/placeholder.svg';
+const DEFAULT_PLACEHOLDER = '/images/gozip_loading.png';
 
 export default function LandImage({
     id = '1',

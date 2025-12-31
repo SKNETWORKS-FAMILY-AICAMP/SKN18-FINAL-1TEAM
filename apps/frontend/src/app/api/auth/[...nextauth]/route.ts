@@ -24,8 +24,9 @@ const handler = NextAuth({
                 }
 
                 try {
+                    const serverApiUrl = process.env.SERVER_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
                     const response = await axios.post(
-                        `${process.env.NEXT_PUBLIC_API_URL}/api/users/auth/login/`,
+                        `${serverApiUrl}/api/users/auth/login/`,
                         {
                             email: credentials.email,
                             password: credentials.password,

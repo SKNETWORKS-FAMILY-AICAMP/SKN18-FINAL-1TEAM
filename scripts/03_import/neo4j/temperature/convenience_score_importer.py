@@ -99,8 +99,8 @@ class ConvenienceScoreImporter:
             WITH r, $avg as raw_avg
             SET r.temperature = round(
                 CASE 
-                    WHEN r.raw_score <= raw_avg THEN r.raw_score * (36.5 / raw_avg)
-                    ELSE 36.5 + (r.raw_score - raw_avg) * (63.5 / (100.0 - raw_avg))
+                    WHEN r.raw_score <= raw_avg THEN 13 + r.raw_score * (23.5 / raw_avg)
+                    ELSE 36.5 + (r.raw_score - raw_avg) * (23.5 / (100.0 - raw_avg))
                 END, 1)
             """, avg=global_avg)
             
