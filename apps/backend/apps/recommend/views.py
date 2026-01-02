@@ -71,37 +71,8 @@ class RecommendedListingsView(APIView):
         if not weighted_metrics:
             return Response({"count": 0, "results": []})
 
-        land_nums: List[str] = []
-        try:
-            driver = Neo4jClient.get_driver()
-            with driver.session() as session:
-                candidate_limit = min(max(limit * 10, limit), 500)
-                query = """
-                UNWIND $weighted_metrics AS wm
-                MATCH (p:Property)-[r:HAS_TEMPERATURE]->(m:Metric {name: wm.name})
-                WITH p, sum(coalesce(r.temperature, 0) * wm.weight) AS score
-                ORDER BY score DESC
-                LIMIT $limit
-                RETURN p.id AS land_num, score
-                """
-                result = session.run(
-                    query,
-                    weighted_metrics=weighted_metrics,
-                    limit=candidate_limit,
-                )
-                land_nums = [record["land_num"] for record in result]
-        except Exception as exc:
-            logger.error("Failed to fetch recommended listings: %s", exc)
-            return Response({"count": 0, "results": []})
-
-        if not land_nums:
-            return Response({"count": 0, "results": []})
-
-        lands_queryset = (
-            Land.objects.with_images()
-            .select_related("landbroker")
-            .filter(land_num__in=land_nums)
-        )
+        lands_queryset = Land.objects.with_images().select_related("landbroker")
+        has_filters = bool(address_filter or deal_type or building_type or search)
 
         if address_filter:
             lands_queryset = lands_queryset.filter(address__icontains=address_filter)
@@ -122,7 +93,55 @@ class RecommendedListingsView(APIView):
                 Q(address__icontains=search) | Q(land_num__icontains=search)
             )
 
-        lands = lands_queryset
+        land_nums: List[str] = []
+        try:
+            driver = Neo4jClient.get_driver()
+            with driver.session() as session:
+                if has_filters:
+                    candidate_land_nums = list(
+                        lands_queryset.values_list("land_num", flat=True)[:5000]
+                    )
+                    if not candidate_land_nums:
+                        return Response({"count": 0, "results": []})
+                    query = """
+                    UNWIND $weighted_metrics AS wm
+                    MATCH (p:Property)-[r:HAS_TEMPERATURE]->(m:Metric {name: wm.name})
+                    WHERE p.id IN $candidate_land_nums
+                    WITH p, sum(coalesce(r.temperature, 0) * wm.weight) AS score
+                    ORDER BY score DESC
+                    LIMIT $limit
+                    RETURN p.id AS land_num, score
+                    """
+                    result = session.run(
+                        query,
+                        weighted_metrics=weighted_metrics,
+                        candidate_land_nums=candidate_land_nums,
+                        limit=limit,
+                    )
+                    land_nums = [record["land_num"] for record in result]
+                else:
+                    query = """
+                    UNWIND $weighted_metrics AS wm
+                    MATCH (p:Property)-[r:HAS_TEMPERATURE]->(m:Metric {name: wm.name})
+                    WITH p, sum(coalesce(r.temperature, 0) * wm.weight) AS score
+                    ORDER BY score DESC
+                    LIMIT $limit
+                    RETURN p.id AS land_num, score
+                    """
+                    result = session.run(
+                        query,
+                        weighted_metrics=weighted_metrics,
+                        limit=limit,
+                    )
+                    land_nums = [record["land_num"] for record in result]
+        except Exception as exc:
+            logger.error("Failed to fetch recommended listings: %s", exc)
+            return Response({"count": 0, "results": []})
+
+        if not land_nums:
+            return Response({"count": 0, "results": []})
+
+        lands = lands_queryset.filter(land_num__in=land_nums)
         land_map = {land.land_num: land for land in lands}
         ordered_lands = [land_map[num] for num in land_nums if num in land_map][:limit]
 
