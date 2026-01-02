@@ -1,4 +1,5 @@
 import { Land, LandFilterParams } from '../types/land';
+import axiosInstance from '@/lib/axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -25,6 +26,29 @@ export async function fetchLands(params?: LandFilterParams): Promise<Land[]> {
 
     const data = await response.json();
     return data.results || data; // DRF pagination support
+}
+
+export async function fetchRecommendedLands(
+    limit = 20,
+    params?: LandFilterParams
+): Promise<Land[]> {
+    const queryParams = new URLSearchParams();
+
+    if (params) {
+        let addressFilter = '';
+        if (params.region) addressFilter = params.region;
+        if (params.dong) addressFilter += (addressFilter ? ' ' : '') + params.dong;
+
+        if (addressFilter) queryParams.append('address', addressFilter);
+        if (params.transaction_type) queryParams.append('deal_type', params.transaction_type);
+        if (params.building_type) queryParams.append('building_type', params.building_type);
+        if (params.search) queryParams.append('search', params.search);
+    }
+
+    queryParams.append('limit', String(limit));
+
+    const response = await axiosInstance.get(`/api/recommend/lands/?${queryParams.toString()}`);
+    return response.data?.results || response.data || [];
 }
 
 export async function fetchLandById(id: string): Promise<Land> {
@@ -140,4 +164,3 @@ export async function fetchFacilityLocations(
 
     return response.json();
 }
-
