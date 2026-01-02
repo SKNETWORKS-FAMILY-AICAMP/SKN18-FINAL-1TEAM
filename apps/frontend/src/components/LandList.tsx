@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Land, LandFilterParams } from '../types/land';
-import { fetchLands } from '../api/landApi';
+import { fetchLands, fetchRecommendedLands } from '../api/landApi';
 import { fetchWishlist, addWishlist, removeWishlist } from '../api/wishlistApi';
 import { useSession } from 'next-auth/react';
 import axiosInstance from '@/lib/axios';
@@ -30,13 +30,28 @@ interface LandListProps {
 const ITEMS_PER_PAGE = 5; // 페이지당 5개 표시 (화면에 맞춤)
 const TEMPERATURE_MIN = 13;
 const TEMPERATURE_MAX = 60;
-const PREFERENCE_STORAGE_KEY = 'preferenceSurveyPriorities';
 const FEATURE_KEY_MAP: Record<string, keyof NonNullable<Land['temperatures']>> = {
     '치안/안전': 'safety',
     '편의시설': 'convenience',
     '반려동물': 'pet',
     '대중교통': 'traffic',
     '문화시설': 'culture',
+};
+
+const FEATURE_KEY_ALIASES: Record<string, keyof NonNullable<Land['temperatures']>> = {
+    safety: 'safety',
+    safty: 'safety',
+    convenience: 'convenience',
+    livingconvenience: 'convenience',
+    pet: 'pet',
+    traffic: 'traffic',
+    culture: 'culture',
+};
+
+const resolveFeatureKey = (label: string) => {
+    if (FEATURE_KEY_MAP[label]) return FEATURE_KEY_MAP[label];
+    const normalized = label.toLowerCase();
+    return FEATURE_KEY_ALIASES[normalized];
 };
 const RANK_WEIGHT: Record<number, number> = {
     1: 3,
@@ -55,7 +70,7 @@ const loadPageStateFromStorage = () => {
     }
 };
 
-export default function LandList({ filterParams, recommendedLandIds }: LandListProps) {
+export default function LandList({ filterParams, recommendedLandIds = [] }: LandListProps) {
     const router = useRouter();
     const { data: session } = useSession();
     const [lands, setLands] = useState<Land[]>([]);
@@ -83,16 +98,14 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
         const loadLands = async () => {
             try {
                 setLoading(true);
-                const data = await fetchLands(filterParams);
-
-                // AI 추천 매물 ID가 있으면 필터링
-                if (recommendedLandIds && recommendedLandIds.length > 0) {
-                    const filtered = data.filter(land => recommendedLandIds.includes(land.id));
-                    setLands(filtered);
-                } else {
-                    setLands(data);
-                }
-
+                const shouldUseRecommendations = Boolean(
+                    session &&
+                    Object.keys(preferencePriorities).length > 0
+                );
+                const data = shouldUseRecommendations
+                    ? await fetchRecommendedLands(20, filterParams)
+                    : await fetchLands(filterParams);
+                setLands(data);
                 setError(null);
             } catch (err) {
                 console.error('Failed to fetch lands:', err);
@@ -103,24 +116,18 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
         };
 
         loadLands();
-    }, [filterParams, recommendedLandIds]);
+    }, [filterParams, session, preferencePriorities]);
 
     useEffect(() => {
         const loadPreferences = async () => {
             if (!session) {
-                try {
-                    const stored = sessionStorage.getItem(PREFERENCE_STORAGE_KEY);
-                    setPreferencePriorities(stored ? JSON.parse(stored) : {});
-                } catch (err) {
-                    console.error('Failed to load preference survey from storage:', err);
-                    setPreferencePriorities({});
-                }
                 return;
             }
             try {
                 const response = await axiosInstance.get('/api/users/preference-survey/');
                 const preferenceData = response.data || {};
-                setPreferencePriorities(preferenceData.priorities ?? preferenceData.survey?.priorities ?? {});
+                const priorities = preferenceData.priorities ?? preferenceData.survey?.priorities ?? {};
+                setPreferencePriorities(priorities);
             } catch (err) {
                 console.error('Failed to fetch preference survey:', err);
                 setPreferencePriorities({});
@@ -129,6 +136,7 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
 
         loadPreferences();
     }, [session]);
+
 
     // 필터가 변경되면 페이지를 1로 리셋 (첫 마운트 제외)
     useEffect(() => {
@@ -171,6 +179,13 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
 
 
     const normalizeTemperature = (value: number) => {
+        // If temperature already in 0..1 range, use directly
+        if (value <= 1) return Math.max(0, value);
+
+        // If temperature is given in percentage-like 0..100 scale, normalize to 0..1
+        if (value > 1 && value <= 100) return Math.min(1, value / 100);
+
+        // Fallback to legacy TEMPERATURE_MIN..TEMPERATURE_MAX scale
         if (value <= TEMPERATURE_MIN) return 0;
         if (value >= TEMPERATURE_MAX) return 1;
         return (value - TEMPERATURE_MIN) / (TEMPERATURE_MAX - TEMPERATURE_MIN);
@@ -179,19 +194,41 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
     const scoreLand = (land: Land) => {
         const temps = land.temperatures || {};
         return Object.entries(preferencePriorities).reduce((sum, [label, rank]) => {
-            const key = FEATURE_KEY_MAP[label];
+            const key = resolveFeatureKey(label);
             const tempValue = key ? temps[key] ?? 0 : 0;
-            const weight = RANK_WEIGHT[rank] ?? 0;
+            const normalizedRank = typeof rank === 'number' ? rank : Number(rank);
+            const weight = RANK_WEIGHT[normalizedRank] ?? 0;
             return sum + weight * normalizeTemperature(tempValue);
         }, 0);
     };
 
+    const recommendedOrder = useMemo(() => {
+        return new Map(recommendedLandIds.map((id, index) => [id, index]));
+    }, [recommendedLandIds]);
+
     const sortedLands = useMemo(() => {
-        if (Object.keys(preferencePriorities).length === 0) {
-            return lands;
+        const base = Object.keys(preferencePriorities).length === 0
+            ? lands
+            : [...lands].sort((a, b) => scoreLand(b) - scoreLand(a));
+
+        if (recommendedOrder.size === 0) {
+            return base;
         }
-        return [...lands].sort((a, b) => scoreLand(b) - scoreLand(a));
-    }, [lands, preferencePriorities]);
+
+        return [...base].sort((a, b) => {
+            const aRank = recommendedOrder.get(a.id);
+            const bRank = recommendedOrder.get(b.id);
+            const aRecommended = aRank !== undefined;
+            const bRecommended = bRank !== undefined;
+
+            if (aRecommended && bRecommended) {
+                return aRank - bRank;
+            }
+            if (aRecommended) return -1;
+            if (bRecommended) return 1;
+            return 0;
+        });
+    }, [lands, preferencePriorities, recommendedOrder]);
 
     // 페이지네이션 계산
     const totalPages = Math.ceil(sortedLands.length / ITEMS_PER_PAGE);
@@ -329,7 +366,9 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
 
                 {/* 매물 카드 리스트 */}
                 <div className="space-y-4">
-                    {currentLands.map((land, index) => (
+                    {currentLands.map((land, index) => {
+                        const isRecommended = recommendedOrder.has(land.id);
+                        return (
                         <div
                             key={land.id}
                             onClick={() => handleCardClick(land.id)}
@@ -360,9 +399,16 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
                                 <div>
 
                                     {/* 매물명 또는 주소 */}
-                                    <h4 className="text-base font-semibold text-[var(--color-text-primary)] mb-2 truncate">
-                                        {land.address || `매물 ${land.id}`}
-                                    </h4>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <h4 className="text-base font-semibold text-[var(--color-text-primary)] truncate">
+                                            {land.address || `매물 ${land.id}`}
+                                        </h4>
+                                        {isRecommended && (
+                                            <span className="shrink-0 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                                AI 추천
+                                            </span>
+                                        )}
+                                    </div>
 
                                     {/* 가격 */}
                                     <p className="text-xl font-bold text-[var(--color-primary)] mb-1">
@@ -405,7 +451,8 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
                                 </svg>
                             </button>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 {/* 페이지네이션 */}
