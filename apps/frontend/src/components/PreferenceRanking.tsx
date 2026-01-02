@@ -11,7 +11,13 @@ const JOB_OPTIONS = [
   { value: "프리랜서", label: "프리랜서" },
   { value: "자영업", label: "자영업자" },
 ];
-const FEATURES = ["치안/안전", "편의시설", "반려동물", "대중교통", "문화시설"];
+const FEATURES = [
+  { value: "Safty", label: "치안/안전" },
+  { value: "LivingConvenience", label: "편의시설" },
+  { value: "Pet", label: "반려동물" },
+  { value: "Traffic", label: "대중교통" },
+  { value: "Culture", label: "문화시설" },
+];
 const RANKS = [1, 2, 3];
 
 interface Props {
@@ -218,27 +224,27 @@ export default function PreferenceRanking({
             <tbody>
               {FEATURES.map((feature, index) => (
                 <tr
-                  key={feature}
+                  key={feature.value}
                   className={`border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
                     }`}
                 >
-                  <td className="p-4 text-left font-medium text-slate-700">{feature}</td>
+                  <td className="p-4 text-left font-medium text-slate-700">{feature.label}</td>
                   {RANKS.map((rank) => (
                     <td key={rank} className="p-4">
                       <label className="relative inline-flex items-center justify-center w-6 h-6 cursor-pointer group">
                         <input
                           type="checkbox"
                           className="sr-only"
-                          checked={priorities[feature] === rank}
+                          checked={priorities[feature.value] === rank}
                           disabled={controlDisabled}
-                          onChange={(e) => handleCheck(feature, rank, e)}
+                          onChange={(e) => handleCheck(feature.value, rank, e)}
                         />
-                        <div className={`w-6 h-6 border-2 rounded-lg transition-all duration-200 group-hover:scale-110 shadow-sm ${priorities[feature] === rank
+                        <div className={`w-6 h-6 border-2 rounded-lg transition-all duration-200 group-hover:scale-110 shadow-sm ${priorities[feature.value] === rank
                             ? 'bg-[#16375B] border-[#16375B]'
                             : 'bg-white border-slate-300 group-hover:border-[#16375B]/50'
                           } ${controlDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
                           <svg
-                            className={`w-full h-full text-white transition-opacity duration-200 ${priorities[feature] === rank ? 'opacity-100' : 'opacity-0'
+                            className={`w-full h-full text-white transition-opacity duration-200 ${priorities[feature.value] === rank ? 'opacity-100' : 'opacity-0'
                               }`}
                             fill="none"
                             stroke="currentColor"
