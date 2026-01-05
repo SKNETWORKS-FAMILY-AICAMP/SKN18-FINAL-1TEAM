@@ -27,7 +27,13 @@ class DatabaseHealthCheck:
         
         for attempt in range(max_retries):
             try:
-                driver = GraphDatabase.driver(uri, auth=(user, password))
+                # 연결 타임아웃 30초로 증가
+                driver = GraphDatabase.driver(
+                    uri, 
+                    auth=(user, password),
+                    connection_timeout=30,  # 30초 타임아웃
+                    max_connection_lifetime=3600
+                )
                 driver.verify_connectivity()
                 driver.close()
                 print(f"✓ Neo4j 연결 성공: {uri}")
@@ -129,4 +135,4 @@ class DatabaseHealthCheck:
         print(f"\n✗ Elasticsearch 연결 실패: 최대 재시도 횟수 초과")
         print(f"  연결 정보 확인: {host}:{port}")
         print(f"  Elasticsearch 컨테이너가 실행 중인지 확인하세요: docker-compose ps")
-        sys.exit(1)
+        raise ConnectionError(f"Elasticsearch 연결 실패: {host}:{port}")

@@ -125,10 +125,14 @@ def main():
                 )
             
             if args.only is None or args.only in ["es", "elasticsearch"]:
-                DatabaseHealthCheck.wait_for_elasticsearch(
-                    os.getenv("ELASTICSEARCH_HOST", "elasticsearch"),
-                    int(os.getenv("ELASTICSEARCH_PORT", "9200"))
-                )
+                try:
+                    DatabaseHealthCheck.wait_for_elasticsearch(
+                        os.getenv("ELASTICSEARCH_HOST", "elasticsearch"),
+                        int(os.getenv("ELASTICSEARCH_PORT", "9200"))
+                    )
+                except Exception as e:
+                    print(f"⚠️ Elasticsearch 연결 실패: {e}")
+                    print("  Elasticsearch Import를 건너뜁니다.")
             
             print("✓ DB 연결 확인 완료")
         
@@ -140,10 +144,22 @@ def main():
         elif args.only in ["es", "elasticsearch"]:
             import_elasticsearch()
         else:
-            # 전체 Import (순서 중요: Neo4j → PostgreSQL → Elasticsearch)
-            import_neo4j()
+            # 전체 Import (순서: Neo4j → PostgreSQL → Elasticsearch)
+            # Neo4j는 선택적 (연결 실패 시 건너뜀)
+            try:
+                import_neo4j()
+            except Exception as e:
+                print(f"\n⚠️ Neo4j Import 실패: {e}")
+                print("  Neo4j Import를 건너뛰고 PostgreSQL Import를 계속 진행합니다.")
+            
             import_postgres()
-            import_elasticsearch()
+            
+            # Elasticsearch는 선택적 (실패 시 건너뜀)
+            try:
+                import_elasticsearch()
+            except Exception as e:
+                print(f"\n⚠️ Elasticsearch Import 실패: {e}")
+                print("  Elasticsearch Import를 건너뛰고 계속 진행합니다.")
         
         elapsed = time.time() - start_time
         print("\n" + "=" * 70)
