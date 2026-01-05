@@ -78,6 +78,20 @@ class PostgresImporter:
             print("✓ Land 테이블 생성 완료")
         else:
             print("✓ Land 테이블 확인 완료")
+        
+        # land_image 테이블 생성
+        create_image_table_query = """
+        CREATE TABLE IF NOT EXISTS land_image (
+            image_id SERIAL PRIMARY KEY,
+            land_id INT NOT NULL,
+            img_url TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (land_id) REFERENCES land(land_id) ON DELETE CASCADE
+        );
+        """
+        self.cur.execute(create_image_table_query)
+        self.conn.commit()
+        print("✓ Land_image 테이블 생성 완료")
     
     def _get_existing_count(self):
         """기존 매물 개수 확인"""
@@ -272,6 +286,7 @@ class PostgresImporter:
         land_id = result[0] if result else None
         is_inserted = result[1] if result else False
         
+        # land_image 테이블에 이미지 저장
         if land_id and images_list:
             self.cur.execute("DELETE FROM land_image WHERE land_id = %s", (land_id,))
             for img_url in images_list:
