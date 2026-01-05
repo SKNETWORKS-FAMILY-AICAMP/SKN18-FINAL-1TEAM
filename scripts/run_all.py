@@ -6,6 +6,7 @@
 3. 데이터 Import (PostgreSQL, Neo4j, Elasticsearch)
 4. 가격 분류 모델 적용
 """
+import os
 import sys
 import os
 import subprocess
@@ -109,6 +110,11 @@ def main():
     print(" " * 18 + "📦 [Step 3/5] 데이터 Import 시작")
     print("=" * 80)
     import_script = base_dir / "03_import" / "import_all.py"
+    if not import_script.exists():
+        print(f"❌ Import 스크립트를 찾을 수 없습니다: {import_script}")
+        sys.exit(1)
+    
+    print(f"📍 스크립트: {import_script}")
     if not import_script.exists():
         print(f"❌ Import 스크립트를 찾을 수 없습니다: {import_script}")
         sys.exit(1)

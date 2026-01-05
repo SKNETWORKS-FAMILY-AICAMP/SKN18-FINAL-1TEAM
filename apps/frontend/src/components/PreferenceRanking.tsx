@@ -11,8 +11,8 @@ const JOB_OPTIONS = [
   { value: "프리랜서", label: "프리랜서" },
   { value: "자영업", label: "자영업자" },
 ];
-const FEATURES = ["주변 공원", "편의시설", "대중교통", "치안/안전", "허위매물"];
-const RANKS = [1, 2, 3];
+const FEATURES = ["안전", "편의시설", "교통", "문화", "반려동물"];
+const RANKS = [1, 2, 3, 4, 5];
 
 interface Props {
   onSubmit: (data: PreferenceSurveyPayload) => Promise<void>;
@@ -198,7 +198,7 @@ export default function PreferenceRanking({
         <div className="flex items-center mb-4">
           <span className="text-3xl mr-3">⭐</span>
           <div>
-            <h3 className="text-lg font-bold text-slate-800">매물 선택 우선순위 (3위까지)</h3>
+            <h3 className="text-lg font-bold text-slate-800">매물 선택 우선 순위 (5위까지)</h3>
             <p className="text-sm text-slate-500">우선순위는 매물 추천에 반영됩니다</p>
           </div>
         </div>
@@ -234,8 +234,8 @@ export default function PreferenceRanking({
                           onChange={(e) => handleCheck(feature, rank, e)}
                         />
                         <div className={`w-6 h-6 border-2 rounded-lg transition-all duration-200 group-hover:scale-110 shadow-sm ${priorities[feature] === rank
-                            ? 'bg-[#16375B] border-[#16375B]'
-                            : 'bg-white border-slate-300 group-hover:border-[#16375B]/50'
+                          ? 'bg-[#16375B] border-[#16375B]'
+                          : 'bg-white border-slate-300 group-hover:border-[#16375B]/50'
                           } ${controlDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
                           <svg
                             className={`w-full h-full text-white transition-opacity duration-200 ${priorities[feature] === rank ? 'opacity-100' : 'opacity-0'

@@ -92,7 +92,7 @@ export default function MarkerInfo({ landId, onCategoryClick }: MarkerInfoProps)
     return (
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm h-[450px]">
             <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-                <h3 className="font-bold text-sm">주변 시설 정보</h3>
+                <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>주변 시설 정보</h3>
             </div>
 
             <div className="p-4">
@@ -109,8 +109,8 @@ export default function MarkerInfo({ landId, onCategoryClick }: MarkerInfoProps)
                                     key={marker.id}
                                     onClick={(e) => handleClick(e, marker.id)}
                                     className={`flex items-center gap-3 p-3 rounded-xl transition-all cursor-pointer border ${isActive
-                                            ? 'bg-blue-50 border-blue-300 shadow-sm'
-                                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                        ? 'bg-blue-50 border-blue-300 shadow-sm'
+                                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
                                         }`}
                                 >
                                     <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${isActive ? 'bg-blue-100' : 'bg-white border border-gray-200'

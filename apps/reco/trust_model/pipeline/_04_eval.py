@@ -10,7 +10,7 @@ from pathlib import Path
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
 
-MODEL_TEMP_PATH = "apps/reco/models/trust_model/model/temp_trained_models.pkl"
+MODEL_TEMP_PATH = "apps/reco/trust_model/temp_trained_models.pkl"
 
 
 def load_temp_model():

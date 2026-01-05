@@ -27,8 +27,8 @@ IS_DOCKER = os.path.exists("/app") or os.path.exists("/data")
 if IS_DOCKER:
     # Docker 환경 (scripts 컨테이너)
     # apps/reco가 /app/apps/reco에 마운트됨
-    SCRIPT_DIR = Path("/app/04_analysis/price_model")
-    MODEL_DIR = Path("/app/04_analysis/price_model")
+    SCRIPT_DIR = Path("/app/03_import/price_model")
+    MODEL_DIR = Path("/app/03_import/price_model")
     DATA_DIR = Path("/data")
     JSON_DATA_DIR = DATA_DIR / "RDB" / "land"
     INTEREST_RATE_PATH = DATA_DIR / "actual_transaction_price" / "(총합)시장금리_및_대출금리(24.8~25.10).csv"

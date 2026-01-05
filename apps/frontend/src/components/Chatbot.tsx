@@ -598,11 +598,11 @@ export default function Chatbot({ onRecommendLands }: ChatbotProps = {}) {
                   {message.type === 'user' ? (
                     /* 사용자 메시지 */
                     <div className="flex justify-end">
-                      <div className="max-w-[75%] p-4 rounded-lg bg-[#16375B] text-white">
+                      <div className="max-w-[75%] p-4 rounded-lg bg-sky-100 text-gray-900">
                         <p className="text-sm whitespace-pre-wrap break-words">
                           {message.content}
                         </p>
-                        <p className="text-xs mt-2 text-gray-300">
+                        <p className="text-xs mt-2 text-gray-500">
                           {formatTime(message.timestamp)}
                         </p>
                       </div>
@@ -623,7 +623,7 @@ export default function Chatbot({ onRecommendLands }: ChatbotProps = {}) {
                                 <div className={`w-[85%] p-4 rounded-lg ${colors.bg} ${colors.border}`}>
                                   {part.rank && (
                                     <div className="flex items-center gap-2 mb-2">
-                                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${colors.badge}`}>
+                                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${colors.badge}`} style={{ color: '#ffffff' }}>
                                         {part.rank === 1 && '🥇 '}
                                         {part.rank === 2 && '🥈 '}
                                         {part.rank === 3 && '🥉 '}
@@ -674,7 +674,7 @@ export default function Chatbot({ onRecommendLands }: ChatbotProps = {}) {
                             <div className="flex justify-start">
                               <div className="w-[85%] p-4 rounded-lg bg-purple-50 border-l-4 border-purple-400">
                                 <div className="flex items-center gap-2 mb-3">
-                                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-purple-400 text-white">
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-purple-400 text-white" style={{ color: '#ffffff' }}>
                                     💡 추가질문
                                   </span>
                                 </div>

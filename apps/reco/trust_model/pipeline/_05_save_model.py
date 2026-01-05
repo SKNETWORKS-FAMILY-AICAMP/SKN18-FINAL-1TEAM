@@ -7,9 +7,9 @@ import pickle
 from pathlib import Path
 import pandas as pd
 
-TEMP_MODEL_PATH = "apps/reco/models/trust_model/model/temp_trained_models.pkl"
-FINAL_MODEL_PATH = "apps/reco/models/trust_model/model/final_trust_model.pkl"
-EVAL_RESULTS_PATH = "apps/reco/models/trust_model/model/model_eval_results.csv"
+TEMP_MODEL_PATH = "apps/reco/trust_model/temp_trained_models.pkl"
+FINAL_MODEL_PATH = "apps/reco/trust_model/final_trust_model.pkl"
+EVAL_RESULTS_PATH = "apps/reco/trust_model/model_eval_results.csv"
 
 
 def select_best_model(temp_data):

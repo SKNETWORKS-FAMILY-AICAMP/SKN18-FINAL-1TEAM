@@ -64,6 +64,38 @@ body {
     background: var(--color-bg-secondary);
 }
 
+/* 입력 요소 텍스트 색상 고정 (다크모드에서도 검정색) */
+input,
+textarea,
+select {
+    color: #1A1A1A !important;
+}
+
+/* 흰색/밝은 배경 컨테이너 내의 텍스트 색상 고정 (다크모드 대응) */
+.bg-white,
+.bg-gray-50,
+.bg-gray-100,
+.bg-blue-50,
+.bg-purple-50,
+.bg-amber-50,
+.bg-orange-50,
+.bg-slate-100,
+.bg-green-50,
+.bg-red-50 {
+    color: #1A1A1A;
+}
+
+/* span, p, h1~h6 등 텍스트 요소의 기본 색상 (밝은 배경 내) */
+.bg-white span,
+.bg-white p,
+.bg-white h1,
+.bg-white h2,
+.bg-white h3,
+.bg-white h4,
+.bg-white div {
+    color: inherit;
+}
+
 /* 챗봇 커스텀 애니메이션 */
 @keyframes bounce-slow {
 
@@ -117,5 +149,3 @@ body {
 .property-card-animate {
     animation: slideInRight 0.4s ease-out;
 }
-
-

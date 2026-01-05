@@ -38,7 +38,7 @@ class PetScoreImporter:
     def import_nodes(self):
         """반려동물 전용 시설(놀이터 등) 노드 생성"""
         print("Importing PetPlayground nodes...")
-        playground_csv = self.base_dir / "data" / "GraphDB_data" / "pet" / "반려동물 놀이터.csv"
+        playground_csv = self.base_dir / "data" / "GraphDB_data" / "animal" / "animal_places.csv"
         
         if not playground_csv.exists():
             print(f"File not found: {playground_csv}")

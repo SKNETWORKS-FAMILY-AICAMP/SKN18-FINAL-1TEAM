@@ -19,6 +19,9 @@ if str(ML_SRC) not in sys.path:
 REPO_ROOT = ML_ROOT.parents[2]
 DEFAULT_DATA_DIR = REPO_ROOT / "data" / "actual_transaction_price"
 
+# 모델 저장 경로: scripts/03_import/price_model
+MODEL_OUTPUT_DIR = REPO_ROOT / "scripts" / "03_import" / "price_model"
+
 
 def run_pipeline(
     skip_prepare: bool = False,
@@ -74,7 +77,7 @@ def run_pipeline(
             from main import main as train_model
             model_path = train_model(
                 data_dir=data_dir,
-                output_dir="model",
+                output_dir=str(MODEL_OUTPUT_DIR),  # scripts/03_import/price_model
                 split_date="2025-06",
                 run_shap=run_shap_in_main,
                 shap_output_dir=str(ML_ROOT / "shap_plots")
@@ -125,9 +128,8 @@ def run_pipeline(
     print("\n📁 생성된 파일:")
     
     # 모델 파일
-    model_dir = ML_ROOT / "model"
-    if model_dir.exists():
-        for f in model_dir.glob("*.pkl"):
+    if MODEL_OUTPUT_DIR.exists():
+        for f in MODEL_OUTPUT_DIR.glob("*.pkl"):
             print(f"   - 모델: {f}")
     
     # SHAP 플롯

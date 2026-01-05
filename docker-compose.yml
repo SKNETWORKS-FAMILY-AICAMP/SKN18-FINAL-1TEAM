@@ -315,6 +315,7 @@ services:
       - ./libs:/libs:ro
       - ./data:/data
       - ./apps/reco:/app/apps/reco:ro
+      - ./apps/reco/trust_model:/data/trust_model:ro
     env_file:
       - .env
     environment:

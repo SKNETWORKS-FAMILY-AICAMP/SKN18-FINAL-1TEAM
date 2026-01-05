@@ -5,6 +5,8 @@ docker compose build backend
 docker compose build rag
 docker compose build reco
 docker compose build frontend
+docker compose build scripts
+
 # 전체 시작
 docker compose up -d
 ### 환경 변수 설정
@@ -42,7 +44,10 @@ docker compose exec backend python manage.py migrate
 # 4. 데이터 Import (30분~1시간 소요)
 docker compose --profile scripts run --rm scripts python 03_import/import_all.py
 
-# 5. 완료! 브라우저에서 http://localhost:3000 접속
+# 5. Trust Score Import (30분~1시간 소요)
+docker compose --profile scripts run --rm scripts python 03_import/trust/import_trust_all.py
+
+# 6. 완료! 브라우저에서 http://localhost:3000 접속
 ```
 
 ---

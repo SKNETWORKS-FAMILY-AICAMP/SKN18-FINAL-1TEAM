@@ -19,7 +19,7 @@ TRAIN_PATH = "data/ML/trust/X_train.csv"
 TEST_PATH = "data/ML/trust/X_test.csv"
 TRAIN_TARGET_PATH = "data/ML/trust/y_train.csv"
 TEST_TARGET_PATH = "data/ML/trust/y_test.csv"
-MODEL_TEMP_PATH = "apps/reco/models/trust_model/model/temp_trained_models.pkl"
+MODEL_TEMP_PATH = "apps/reco/trust_model/temp_trained_models.pkl"
 
 
 def load_processed_data():

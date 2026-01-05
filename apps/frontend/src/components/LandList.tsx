@@ -300,7 +300,7 @@ export default function LandList({ filterParams, recommendedLandIds }: LandListP
                                     </h4>
 
                                     {/* 가격 */}
-                                    <p className="text-xl font-bold text-[var(--color-primary)] mb-1">
+                                    <p className="text-xl font-bold mb-1" style={{ color: '#16375B' }}>
                                         {land.price}
                                     </p>
 

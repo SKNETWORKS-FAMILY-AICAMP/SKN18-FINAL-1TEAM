@@ -12,6 +12,8 @@ import { Land } from '../types/land';
 import { fetchLandById } from '../api/landApi';
 import { recordListingView } from '../api/historyApi';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+import axiosInstance from '@/lib/axios';
 
 interface LandDetailProps {
   landId: string;
@@ -21,6 +23,7 @@ type TempId = 'safety' | 'convenience' | 'pet' | 'traffic' | 'culture';
 
 export default function LandDetail({ landId }: LandDetailProps) {
   const router = useRouter();
+  const { status } = useSession();
   const [land, setLand] = useState<Land | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +32,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
   const [showPriceTooltip, setShowPriceTooltip] = useState(false);
   const [maxScrollDepth, setMaxScrollDepth] = useState(0);
   const maxScrollDepthRef = useRef(0);
+  const [userPriorities, setUserPriorities] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const loadLand = async () => {
@@ -46,6 +50,21 @@ export default function LandDetail({ landId }: LandDetailProps) {
 
     if (landId) loadLand();
   }, [landId]);
+
+  // 사용자 선호도 우선순위 가져오기 (로그인한 경우만)
+  useEffect(() => {
+    const fetchUserPriorities = async () => {
+      if (status !== 'authenticated') return;
+      try {
+        const response = await axiosInstance.get('/api/users/preference-survey/');
+        const priorities = response.data?.priorities || {};
+        setUserPriorities(priorities);
+      } catch (err) {
+        console.log('선호도 정보 없음 - 기본 순서 사용');
+      }
+    };
+    fetchUserPriorities();
+  }, [status]);
 
   // ✅ 온도 설명 토글 상태
   const [activeTempId, setActiveTempId] = useState<TempId | null>(null);
@@ -122,6 +141,43 @@ export default function LandDetail({ landId }: LandDetailProps) {
     return fee;
   };
 
+  // 사용자 우선순위가 있으면 정렬 적용 (훅은 조건부 return 전에 호출)
+  const priorityLabelToId: Record<string, TempId> = {
+    '안전': 'safety',
+    '교통': 'traffic',
+    '편의시설': 'convenience',
+    '문화': 'culture',
+    '반려동물': 'pet',
+  };
+
+  const sortedTempItems = useMemo(() => {
+    if (!land) return [];
+
+    const tempItems = [
+      { id: 'safety', label: '안전 온도', value: land.temperatures?.safety || 36.5, icon: '🛡️', desc: '치안 및 인프라' },
+      { id: 'traffic', label: '교통 온도', value: land.temperatures?.traffic || 36.5, icon: '🚇', desc: '대중교통 접근성' },
+      { id: 'convenience', label: '편의 온도', value: land.temperatures?.convenience || 36.5, icon: '🛒', desc: '생활 밀접 시설' },
+      { id: 'culture', label: '문화 온도', value: land.temperatures?.culture || 36.5, icon: '🏛️', desc: '문화 및 예술 시설' },
+      { id: 'pet', label: '반려동물 온도', value: land.temperatures?.pet || 36.5, icon: '🐾', desc: '반려견 산책 및 병원' },
+    ];
+
+    if (Object.keys(userPriorities).length === 0) {
+      return tempItems;
+    }
+
+    const idToPriority: Record<string, number> = {};
+    for (const [label, rank] of Object.entries(userPriorities)) {
+      const id = priorityLabelToId[label];
+      if (id) idToPriority[id] = rank;
+    }
+
+    return [...tempItems].sort((a, b) => {
+      const priorityA = idToPriority[a.id] ?? 99;
+      const priorityB = idToPriority[b.id] ?? 99;
+      return priorityA - priorityB;
+    });
+  }, [userPriorities, land]);
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
@@ -140,14 +196,14 @@ export default function LandDetail({ landId }: LandDetailProps) {
 
   // ✅ 온도 설명 내용
   const tempExplain: Record<TempId, { title: string; subtitle: string; body: string[] }> = {
-    convenience: {
-      title: '생활편의',
-      subtitle: '일상 시설 접근성',
+    safety: {
+      title: '안전',
+      subtitle: '범죄 위험 + 안전 인프라',
       body: [
-        '편의점·세탁소·마트·공원까지의 거리를 기준으로, 일상생활이 얼마나 편리한지를 평가합니다.',
-        '전체 매물의 거리 분포를 기준으로 “가깝다 / 보통 / 멀다” 구간을 나눕니다.',
-        '가까울수록 점수가 높고, 기준 거리 이상부터는 점수가 크게 낮아집니다.',
-        '공원은 단순 거리뿐 아니라 면적(규모)까지 함께 고려해 작은 공원이 과대평가되는 문제를 줄였습니다.',
+        '범죄 위험과 안전 인프라를 함께 고려해 거주 시 체감되는 안심도를 평가합니다.',
+        '범죄는 유형별 위험도를 다르게 반영해 중범죄 영향이 묻히지 않도록 설계했습니다.',
+        'CCTV, 경찰관서, 비상벨 등 안전 인프라는 정규화 후 가중합으로 반영합니다.',
+        '평균 기준선으로 36.5°C를 사용해 다른 매물과 직관적으로 비교할 수 있습니다.',
       ],
     },
     traffic: {
@@ -160,6 +216,16 @@ export default function LandDetail({ landId }: LandDetailProps) {
         '전체 매물 분포 대비 해당 매물이 어느 위치에 있는지를 보여줍니다.',
       ],
     },
+    convenience: {
+      title: '생활편의',
+      subtitle: '일상 시설 접근성',
+      body: [
+        '편의점·세탁소·마트·공원까지의 거리를 기준으로, 일상생활이 얼마나 편리한지를 평가합니다.',
+        '전체 매물의 거리 분포를 기준으로 “가깝다 / 보통 / 멀다” 구간을 나눕니다.',
+        '가까울수록 점수가 높고, 기준 거리 이상부터는 점수가 크게 낮아집니다.',
+        '공원은 단순 거리뿐 아니라 면적(규모)까지 함께 고려해 작은 공원이 과대평가되는 문제를 줄였습니다.',
+      ],
+    },
     culture: {
       title: '문화',
       subtitle: '희소성 + 접근성',
@@ -168,16 +234,6 @@ export default function LandDetail({ landId }: LandDetailProps) {
         '문화시설은 지역별 분포가 불균형하므로 희소한 시설일수록 가중치를 높게 반영합니다.',
         '가까울수록 점수가 높아지는 거리 감쇠 방식을 적용합니다.',
         '과대대표될 수 있는 시설(예: 도서관)은 가중치를 낮춰 변별력을 확보했습니다.',
-      ],
-    },
-    safety: {
-      title: '안전',
-      subtitle: '범죄 위험 + 안전 인프라',
-      body: [
-        '범죄 위험과 안전 인프라를 함께 고려해 거주 시 체감되는 안심도를 평가합니다.',
-        '범죄는 유형별 위험도를 다르게 반영해 중범죄 영향이 묻히지 않도록 설계했습니다.',
-        'CCTV, 경찰관서, 비상벨 등 안전 인프라는 정규화 후 가중합으로 반영합니다.',
-        '평균 기준선으로 36.5°C를 사용해 다른 매물과 직관적으로 비교할 수 있습니다.',
       ],
     },
     pet: {
@@ -197,17 +253,11 @@ export default function LandDetail({ landId }: LandDetailProps) {
     setActiveTempId((prev) => (prev === id ? null : id));
   };
 
-  const tempItems = [
-    { id: 'safety', label: '안전 온도', value: land.temperatures?.safety || 36.5, icon: '🛡️', desc: '치안 및 인프라' },
-    { id: 'convenience', label: '편의 온도', value: land.temperatures?.convenience || 36.5, icon: '🛒', desc: '생활 밀접 시설' },
-    { id: 'pet', label: '반려동물 온도', value: land.temperatures?.pet || 36.5, icon: '🐾', desc: '반려견 산책 및 병원' },
-    { id: 'traffic', label: '교통 온도', value: land.temperatures?.traffic || 36.5, icon: '🚇', desc: '대중교통 접근성' },
-    { id: 'culture', label: '문화 온도', value: land.temperatures?.culture || 36.5, icon: '🏛️', desc: '문화 및 예술 시설' },
-  ];
+
 
   const activeTemp = activeTempId ? tempExplain[activeTempId] : null;
-  const activeTempItem = activeTempId ? tempItems.find((item) => item.id === activeTempId) : null;
-  const visibleTempItems = activeTempId ? tempItems.filter((item) => item.id !== activeTempId) : tempItems;
+  const activeTempItem = activeTempId ? sortedTempItems.find((item) => item.id === activeTempId) : null;
+  const visibleTempItems = activeTempId ? sortedTempItems.filter((item) => item.id !== activeTempId) : sortedTempItems;
 
   // 이미지가 없으면 기본 placeholder 사용
   const defaultPlaceholder = '/images/gozip_loading.png';
@@ -413,9 +463,9 @@ export default function LandDetail({ landId }: LandDetailProps) {
             <h3 className="font-bold flex items-center gap-3">
               <span className="flex items-center gap-2">
                 <span className="text-xl">🌡️</span>
-                <span>부동산 온도</span>
+                <span style={{ color: '#ffffff' }}>부동산 온도</span>
               </span>
-              <span className="text-[11px] text-gray-300 font-normal text-left flex-1">
+              <span className="text-[11px] font-normal text-left flex-1" style={{ color: '#d1d5db' }}>
                 온도에 대해 궁금한점은 아이콘을 눌러보세요
               </span>
             </h3>
@@ -458,6 +508,9 @@ export default function LandDetail({ landId }: LandDetailProps) {
                                   ? 'text-orange-500'
                                   : 'text-blue-500'
                                 }`}
+                              style={{
+                                color: activeTempItem.value >= 39 ? '#ef4444' : activeTempItem.value >= 35 ? '#f97316' : '#3b82f6'
+                              }}
                             >
                               {activeTempItem.value.toFixed(1)}
                               <span className="text-base text-gray-400 ml-1">°C</span>
@@ -545,10 +598,13 @@ export default function LandDetail({ landId }: LandDetailProps) {
 
                           <div>
                             <div className="flex items-center justify-between text-lg mb-2">
-                              <span className="font-semibold text-slate-700">{temp.label}</span>
+                              <span className="font-semibold text-slate-800">{temp.label}</span>
                               <span
                                 className={`font-black ${temp.value >= 39 ? 'text-red-500' : temp.value >= 35 ? 'text-orange-500' : 'text-blue-500'
                                   }`}
+                                style={{
+                                  color: temp.value >= 39 ? '#ef4444' : temp.value >= 35 ? '#f97316' : '#3b82f6'
+                                }}
                               >
                                 {temp.value.toFixed(1)}
                                 <span className="text-base text-gray-400 ml-1">°C</span>
@@ -576,7 +632,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
               {activeTemp && (
                 <div className="pt-4 mt-auto">
                   <div className="flex items-center justify-between">
-                    {tempItems.map((temp) => {
+                    {sortedTempItems.map((temp) => {
                       const isActive = activeTempId === (temp.id as TempId);
 
                       return (
@@ -609,7 +665,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
         {/* 핵심정보 */}
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-col">
           <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-            <h3 className="font-bold text-sm">핵심정보</h3>
+            <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>핵심정보</h3>
           </div>
           <div className="p-4 flex-1">
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -668,7 +724,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
         {/* 계약 및 매물정보 */}
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-col">
           <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-            <h3 className="font-bold text-sm">계약 및 매물정보</h3>
+            <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>계약 및 매물정보</h3>
           </div>
           <div className="p-4 flex-1">
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
@@ -714,7 +770,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
         additionalOptions.length > 0) && (
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
             <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-              <h3 className="font-bold text-sm">생활 및 옵션정보</h3>
+              <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>생활 및 옵션정보</h3>
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -833,7 +889,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
       {/* 상세 설명 섹션 */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-          <h3 className="font-bold text-sm">상세 설명</h3>
+          <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>상세 설명</h3>
         </div>
         <div className="p-4">
           <p className="text-slate-700 whitespace-pre-line leading-relaxed text-sm">
@@ -845,7 +901,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
       {/* 중개사 정보 */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-          <h3 className="font-bold text-sm">중개사 정보</h3>
+          <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>중개사 정보</h3>
         </div>
         <div className="p-4">
           <div className="flex items-start gap-4">

@@ -18,8 +18,8 @@ project_root = Path(__file__).parent.parent.parent.parent.parent
 os.chdir(project_root)
 print(f"📁 작업 디렉토리 변경: {project_root}")
 
-# pipeline 폴더 경로 추가
-pipeline_dir = Path(__file__).parent / "pipeline"
+# pipeline 폴더 경로 추가 (run_all.py가 이미 pipeline 폴더 안에 있음)
+pipeline_dir = Path(__file__).parent
 sys.path.insert(0, str(pipeline_dir))
 
 # 개별 단계 import

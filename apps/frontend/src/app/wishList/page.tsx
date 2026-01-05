@@ -22,14 +22,36 @@ import { fetchLandById } from '@/api/landApi'
 import { Land } from '@/types/land'
 
 export default function WishListPage() {
-  const [showComparison, setShowComparison] = useState(false)
-  const [selectedLands, setSelectedLands] = useState<number[]>([])
+  // sessionStorage에서 비교 상태 복원
+  const [showComparison, setShowComparison] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('wishlist_showComparison') === 'true'
+    }
+    return false
+  })
+  const [selectedLands, setSelectedLands] = useState<number[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('wishlist_selectedLands')
+      return saved ? JSON.parse(saved) : []
+    }
+    return []
+  })
   const [wishlistLands, setWishlistLands] = useState<Land[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const pageSize = 8
   const totalPages = Math.ceil(wishlistLands.length / pageSize)
+
+  // 비교 상태 변경 시 sessionStorage에 저장
+  useEffect(() => {
+    sessionStorage.setItem('wishlist_showComparison', String(showComparison))
+  }, [showComparison])
+
+  // 선택된 매물 변경 시 sessionStorage에 저장
+  useEffect(() => {
+    sessionStorage.setItem('wishlist_selectedLands', JSON.stringify(selectedLands))
+  }, [selectedLands])
 
   // 찜 매물 데이터 로드
   useEffect(() => {
@@ -49,7 +71,6 @@ export default function WishListPage() {
 
         setWishlistLands(lands)
       } catch (err) {
-        console.error('Failed to load wishlist:', err)
         setError('찜 매물을 불러오는데 실패했습니다.')
       } finally {
         setLoading(false)
@@ -133,6 +154,8 @@ export default function WishListPage() {
           // 중개사 신뢰도
           brokerTrustScore: land.broker?.trust_score,
           brokerTrustGrade: land.broker?.trust_grade,
+          // 온도 데이터
+          temperatures: land.temperatures,
         }
       })
       .filter(Boolean) as any[]
