@@ -180,7 +180,7 @@ docker compose --profile scripts run --rm scripts python 03_import/reimport_brok
 docker compose --profile scripts run --rm scripts python 03_import/update_broker_stats.py
 
 # Step 5: Trust Score 예측 및 DB 저장
-docker compose --profile scripts run --rm scripts python 04_analysis/trust_prediction/predict_trust_scores.py
+docker compose --profile scripts run --rm scripts python 03_import/trust/import_trust_all.py
 ```
 
 ### 2️⃣ 실거래가 분류 모델 (Price Model)

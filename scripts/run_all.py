@@ -128,7 +128,7 @@ def main():
     print("\n" + "=" * 80)
     print(" " * 15 + "🤖 [Step 4/4] 가격 분류 모델 적용 시작")
     print("=" * 80)
-    analysis_script = base_dir / "04_analysis" / "price_model" / "apply_price_classification.py"
+    analysis_script = base_dir / "03_import" / "price_model" / "apply_price_classification.py"
     if not analysis_script.exists():
         print(f"⚠️ 분석 스크립트 없음: {analysis_script}")
         print("   분석 없이 파이프라인을 완료합니다...")

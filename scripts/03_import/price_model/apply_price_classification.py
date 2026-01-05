@@ -26,9 +26,9 @@ IS_DOCKER = os.path.exists("/app") or os.path.exists("/data")
 
 if IS_DOCKER:
     # Docker 환경 (scripts 컨테이너)
-    # apps/reco가 /app/apps/reco에 마운트됨
-    SCRIPT_DIR = Path("/app/03_import/price_model")
-    MODEL_DIR = Path("/app/03_import/price_model")
+    # 스크립트가 /app/03_import/price_model에 위치
+    SCRIPT_DIR = Path(__file__).resolve().parent
+    MODEL_DIR = SCRIPT_DIR  # 모델 파일이 스크립트와 같은 디렉토리에 있음
     DATA_DIR = Path("/data")
     JSON_DATA_DIR = DATA_DIR / "RDB" / "land"
     INTEREST_RATE_PATH = DATA_DIR / "actual_transaction_price" / "(총합)시장금리_및_대출금리(24.8~25.10).csv"
@@ -36,7 +36,12 @@ else:
     # 로컬 환경
     SCRIPT_DIR = Path(__file__).resolve().parent
     PROJECT_ROOT = SCRIPT_DIR.parents[2]  # SKN18-FINAL-1TEAM
-    MODEL_DIR = PROJECT_ROOT / "apps" / "reco" / "price_model" / "model"
+    # 로컬에서는 스크립트 디렉토리에도 모델이 있고, apps/reco에도 있음
+    # 우선 스크립트 디렉토리에서 찾고, 없으면 apps/reco에서 찾음
+    if (SCRIPT_DIR / "price_model_lightgbm.pkl").exists():
+        MODEL_DIR = SCRIPT_DIR
+    else:
+        MODEL_DIR = PROJECT_ROOT / "apps" / "reco" / "price_model" / "model"
     DATA_DIR = PROJECT_ROOT / "data"
     JSON_DATA_DIR = DATA_DIR / "RDB" / "land"
     INTEREST_RATE_PATH = DATA_DIR / "actual_transaction_price" / "(총합)시장금리_및_대출금리(24.8~25.10).csv"
