@@ -92,9 +92,21 @@ def main():
             print("   S3 업로드 없이 계속 진행합니다...")
     
     
+    # Step 2.7: PostgreSQL 컬럼 추가 (마이그레이션)
+    print("\n" + "=" * 80)
+    print(" " * 18 + "🔧 [Step 2.7/5] PostgreSQL 스키마 마이그레이션")
+    print("=" * 80)
+    migration_script = base_dir / "03_import" / "postgres" / "add_columns.py"
+    if migration_script.exists():
+        print(f"📍 스크립트: {migration_script}")
+        if not run_script(migration_script):
+            print("⚠️ 마이그레이션 실패, 계속 진행합니다...")
+    else:
+        print(f"⚠️ 마이그레이션 스크립트 없음: {migration_script}")
+    
     # Step 3: 데이터 Import
     print("\n" + "=" * 80)
-    print(" " * 18 + "📦 [Step 3/4] 데이터 Import 시작")
+    print(" " * 18 + "📦 [Step 3/5] 데이터 Import 시작")
     print("=" * 80)
     import_script = base_dir / "03_import" / "import_all.py"
     if not import_script.exists():

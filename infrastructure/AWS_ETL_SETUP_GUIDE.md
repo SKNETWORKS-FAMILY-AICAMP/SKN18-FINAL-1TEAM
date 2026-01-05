@@ -6,78 +6,113 @@
 
 ## 🏗️ 전체 시스템 아키텍처
 
-### 현재 구현된 아키텍처 (EventBridge 포함)
+### 현재 구현된 아키텍처 (2026-01-05 기준)
 
 ```mermaid
 graph TB
-    subgraph "사용자 & 스케줄링"
-        User[👤 사용자/개발자]
+    subgraph "스케줄링 & 트리거"
+        User[👤 사용자/개발자<br/>수동 실행]
         EB[⏰ EventBridge<br/>매일 12:00 PM KST<br/>cron: 0 3 * * ?]
     end
 
     subgraph "컨테이너 실행 환경"
-        ECR[📦 ECR Repository<br/>realestate-scripts]
-        ECS[🚀 ECS Fargate<br/>4 vCPU, 16GB RAM]
+        ECR[📦 ECR Repository<br/>realestate-scripts:latest]
+        ECS[🚀 ECS Fargate Task<br/>4 vCPU, 16GB RAM]
     end
 
-    subgraph "ETL Pipeline"
-        Step1[🕷️ Step 1: 크롤링<br/>Playwright Headless]
-        Step2[🔧 Step 2: 전처리<br/>OpenAI API]
-        Step3[📦 Step 3: Import<br/>Neo4j + PostgreSQL + ES]
-        Step4[🤖 Step 4: 가격 분류<br/>ML Model]
+    subgraph "ETL Pipeline - run_all.py"
+        S3_Download[📥 Step 0: S3 다운로드<br/>download_from_s3.py<br/>선택적]
+        
+        Crawl[🕷️ Step 1: 크롤링<br/>crawl_seoul.py<br/>Playwright Headless<br/>현재 주석 처리]
+        
+        Preprocess[🔧 Step 2: 전처리<br/>generate_search_text_parallel.py<br/>OpenAI API<br/>현재 주석 처리]
+        
+        S3_Upload[📤 Step 2.5: S3 업로드<br/>upload_to_s3.py<br/>UPLOAD_TO_S3=true]
+        
+        Migration[🔧 Step 2.7: 스키마 마이그레이션<br/>add_columns.py<br/>style_tags, search_text 컬럼 추가]
+        
+        Import[📦 Step 3: 데이터 Import<br/>import_all.py]
+        
+        ML[🤖 Step 4: ML 모델 적용<br/>apply_price_classification.py]
+    end
+
+    subgraph "S3 Storage"
+        S3[(☁️ S3 Bucket<br/>realestate-etl-data/data/<br/>매물 데이터 + GraphDB 데이터)]
+    end
+
+    subgraph "Import 세부 단계"
+        Neo4j_Import[🔗 Neo4j Import<br/>try-except로 보호<br/>실패 시 건너뛰기]
+        PG_Import[💾 PostgreSQL Import<br/>postgres_importer.py<br/>style_tags, search_text 포함]
+        ES_Import[🔍 Elasticsearch Import<br/>try-except로 보호<br/>실패 시 건너뛰기]
     end
 
     subgraph "VPC - 10.0.0.0/16"
         subgraph "Public Subnet"
-            ECS_Task[ECS Task Instance]
+            ECS_Task[ECS Task Instance<br/>subnet-0d88da4dbe1be58fe]
         end
         
         subgraph "Database Layer"
-            RDS[(💾 RDS PostgreSQL<br/>db.t3.micro)]
-            Neo4j[🔗 EC2 Neo4j<br/>t3.small<br/>13.124.11.170:7687]
-            ES[🔍 EC2 Elasticsearch<br/>t3.medium 권장<br/>43.201.29.36:9200]
+            RDS[(💾 RDS PostgreSQL<br/>db.t3.micro<br/>realestate-postgres...)]
+            Neo4j[🔗 EC2 Neo4j<br/>t3.small<br/>10.0.1.90:7687<br/>연결 타임아웃 이슈]
+            ES[🔍 EC2 Elasticsearch<br/>t3.medium 권장<br/>현재 건너뛰기]
         end
     end
 
     subgraph "보안 & 인증"
         SG[🛡️ Security Group<br/>sg-0b2bdef4bce788976]
-        IAM[🔑 IAM Roles]
+        IAM[🔑 IAM Roles<br/>Task Role: S3 읽기/쓰기<br/>Execution Role: ECR, Logs]
     end
 
     subgraph "모니터링"
-        CW[📊 CloudWatch Logs<br/>/ecs/realestate-etl]
+        CW[📊 CloudWatch Logs<br/>/ecs/realestate-etl<br/>실시간 스트리밍]
     end
 
     subgraph "외부 API"
-        OpenAI[🤖 OpenAI API]
-        Kakao[🗺️ Kakao API]
+        OpenAI[🤖 OpenAI API<br/>검색 텍스트 생성]
+        Kakao[🗺️ Kakao API<br/>지도 좌표 변환]
     end
 
     User -->|수동 실행| ECS
-    EB -->|자동 트리거| ECS
+    EB -.->|자동 트리거<br/>향후 구현| ECS
     ECS -->|Pull Image| ECR
-    ECS_Task -->|run_all.py| Step1
-    Step1 -->|JSON 파일| Step2
-    Step2 -->|JSON 파일| Step3
-    Step3 -->|완료| Step4
+    ECS_Task -->|실행| S3_Download
     
-    Step1 -->|지도 데이터| Kakao
-    Step2 -->|검색 텍스트 생성| OpenAI
-    Step3 -->|그래프 데이터| Neo4j
-    Step3 -->|관계형 데이터| RDS
-    Step3 -->|검색 인덱스| ES
-    Step4 -->|가격 등급 업데이트| RDS
+    S3_Download -->|DOWNLOAD_FROM_S3=true| S3
+    S3_Download -->|데이터 로드| Migration
     
-    SG -->|보안| ECS_Task
-    IAM -->|권한| ECS_Task
-    ECS_Task -.->|로그| CW
+    Crawl -.->|주석 처리| Preprocess
+    Preprocess -.->|주석 처리| S3_Upload
+    S3_Upload -.->|UPLOAD_TO_S3=true| S3
+    
+    Migration -->|컬럼 추가 완료| Import
+    Import -->|순차 실행| Neo4j_Import
+    Neo4j_Import -->|성공 또는 실패| PG_Import
+    PG_Import -->|성공| ES_Import
+    ES_Import -->|완료| ML
+    
+    Neo4j_Import -.->|연결 타임아웃| Neo4j
+    PG_Import -->|데이터 저장| RDS
+    ES_Import -.->|건너뛰기| ES
+    
+    ML -->|가격 등급 업데이트| RDS
+    
+    Crawl -.->|지도 데이터| Kakao
+    Preprocess -.->|텍스트 생성| OpenAI
+    
+    SG -->|보안 규칙| ECS_Task
+    IAM -->|권한 부여| ECS_Task
+    ECS_Task -.->|로그 전송| CW
 
-    style EB fill:#FF6B6B
-    style ECS fill:#FF8C42
-    style RDS fill:#4ECDC4
-    style Neo4j fill:#95E1D3
-    style ES fill:#FFE66D
-    style CW fill:#A8E6CF
+    style EB fill:#FF6B6B,stroke:#333,stroke-width:2px
+    style ECS fill:#FF8C42,stroke:#333,stroke-width:2px
+    style S3 fill:#FF9F43,stroke:#333,stroke-width:2px
+    style Migration fill:#4ECDC4,stroke:#333,stroke-width:2px
+    style RDS fill:#4ECDC4,stroke:#333,stroke-width:2px
+    style Neo4j fill:#FFE66D,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+    style ES fill:#A8E6CF,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+    style CW fill:#95E1D3,stroke:#333,stroke-width:2px
+    style Crawl fill:#E0E0E0,stroke:#999,stroke-width:1px,stroke-dasharray: 3 3
+    style Preprocess fill:#E0E0E0,stroke:#999,stroke-width:1px,stroke-dasharray: 3 3
 ```
 
 ### 주요 구성 요소
