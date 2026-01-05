@@ -11,6 +11,7 @@ import Image from 'next/image';
 import { Land } from '../types/land';
 import { fetchLandById } from '../api/landApi';
 import { recordListingView } from '../api/historyApi';
+import { addWishlist, removeWishlist, fetchWishlist } from '../api/wishlistApi';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import axiosInstance from '@/lib/axios';
@@ -30,6 +31,9 @@ export default function LandDetail({ landId }: LandDetailProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [liked, setLiked] = useState(false);
   const [showPriceTooltip, setShowPriceTooltip] = useState(false);
+  const [showBrokerTooltip, setShowBrokerTooltip] = useState(false);
+  const [showTopBrokerTooltip, setShowTopBrokerTooltip] = useState(false);
+  const [showStyleTooltip, setShowStyleTooltip] = useState(false);
   const [maxScrollDepth, setMaxScrollDepth] = useState(0);
   const maxScrollDepthRef = useRef(0);
   const [userPriorities, setUserPriorities] = useState<Record<string, number>>({});
@@ -50,6 +54,23 @@ export default function LandDetail({ landId }: LandDetailProps) {
 
     if (landId) loadLand();
   }, [landId]);
+
+  // 찜 상태 확인 (로그인한 경우만)
+  useEffect(() => {
+    const checkWishlistStatus = async () => {
+      if (status !== 'authenticated' || !landId) return;
+
+      try {
+        const wishlist = await fetchWishlist();
+        const isInWishlist = wishlist.some(item => item.listing_id === landId);
+        setLiked(isInWishlist);
+      } catch (err) {
+        console.error('Failed to check wishlist status:', err);
+      }
+    };
+
+    checkWishlistStatus();
+  }, [status, landId]);
 
   // 사용자 선호도 우선순위 가져오기 (로그인한 경우만)
   useEffect(() => {
@@ -103,19 +124,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
     };
   }, [landId]); // maxScrollDepth 제거!
 
-  // 신뢰도 등급에 따른 아이콘 반환
-  const getTrustBadgeImage = (score: string | null | undefined) => {
-    switch (score) {
-      case 'A':
-        return '/assets/land_broker/gold.png';
-      case 'B':
-        return '/assets/land_broker/silver.png';
-      case 'C':
-        return '/assets/land_broker/bronze.png';
-      default:
-        return null;
-    }
-  };
+
 
   // 가격 분류 레이블 배지 색상
   const getPriceBadgeColor = (label: string | undefined) => {
@@ -273,9 +282,30 @@ export default function LandDetail({ landId }: LandDetailProps) {
     setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
   };
 
-  const handleLike = (e: React.MouseEvent) => {
+  const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    setLiked(!liked);
+
+    // 로그인 체크
+    if (status !== 'authenticated') {
+      alert('로그인이 필요한 기능입니다.');
+      router.push('/login');
+      return;
+    }
+
+    try {
+      if (liked) {
+        // 찜 해제
+        await removeWishlist(landId);
+        setLiked(false);
+      } else {
+        // 찜 추가
+        await addWishlist(landId);
+        setLiked(true);
+      }
+    } catch (err) {
+      console.error('Failed to update wishlist:', err);
+      alert('찜 처리 중 오류가 발생했습니다.');
+    }
   };
 
   // listing_info에서 카테고리별 데이터 추출 및 파싱
@@ -350,17 +380,92 @@ export default function LandDetail({ landId }: LandDetailProps) {
       {/* 헤더 섹션: 매물번호, 주소, 가격 */}
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-                clipRule="evenodd"
-              />
-            </svg>
+          <div className="relative flex-shrink-0">
+            {land.broker?.trust_score && (
+              <div
+                className="w-9 h-9 flex items-center justify-center cursor-pointer"
+                onMouseEnter={() => setShowTopBrokerTooltip(true)}
+                onMouseLeave={() => setShowTopBrokerTooltip(false)}
+              >
+                <Image
+                  src={
+                    land.broker.trust_score === 'A' ? '/assets/land_broker/gold.png' :
+                      land.broker.trust_score === 'B' ? '/assets/land_broker/silver.png' :
+                        '/assets/land_broker/bronze.png'
+                  }
+                  alt={`${land.broker.trust_score}등급`}
+                  width={36}
+                  height={36}
+                  className="object-contain"
+                />
+              </div>
+            )}
+            {!land.broker?.trust_score && (
+              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+            )}
           </div>
           <div className="flex-1">
-            <p className="text-sm text-gray-500 mb-1">매물번호 {land.land_num}</p>
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-sm text-gray-500">매물번호 {land.land_num}</p>
+              {land.broker?.trust_score && (
+                <div className="relative">
+                  <button
+                    className="w-4 h-4 rounded-full bg-gray-200 text-gray-600 text-[10px] font-bold hover:bg-gray-300 transition-colors flex items-center justify-center"
+                    onMouseEnter={() => setShowTopBrokerTooltip(true)}
+                    onMouseLeave={() => setShowTopBrokerTooltip(false)}
+                  >
+                    ?
+                  </button>
+                  {showTopBrokerTooltip && (
+                    <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-lg shadow-xl border border-gray-200 p-4 z-50">
+                      <p className="text-sm font-bold text-blue-600 mb-2">
+                        중개사 신뢰도 평가 모델
+                      </p>
+                      <p className="text-xs text-slate-600 leading-relaxed mb-3">
+                        AI 기반 평가 모델을 통해 중개사의 실적, 인력, 거래 이력, 구조 등을 종합적으로 분석하여 신뢰도를 A, B, C 등급으로 평가합니다.
+                      </p>
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <p className="text-xs text-slate-600 mb-2">
+                          <strong>현재 중개사 신뢰도:</strong>
+                        </p>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${land.broker.trust_score === 'A' ? 'bg-yellow-500 text-white' :
+                            land.broker.trust_score === 'B' ? 'bg-gray-400 text-white' :
+                              'bg-amber-700 text-white'
+                            }`}>
+                            {land.broker.trust_score === 'A' ? '골드 (A등급)' :
+                              land.broker.trust_score === 'B' ? '실버 (B등급)' :
+                                '브론즈 (C등급)'}
+                          </span>
+                        </div>
+                        {land.broker.trust_score === 'B' && (
+                          <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                            <p className="text-xs text-yellow-800">
+                              ⚠️ <strong>주의:</strong> 실버 등급 중개사입니다. 매물 정보를 꼼꼼히 확인하시고, 계약 전 충분한 상담을 권장합니다.
+                            </p>
+                          </div>
+                        )}
+                        {land.broker.trust_score === 'C' && (
+                          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                            <p className="text-xs text-red-800">
+                              🚨 <strong>경고:</strong> 브론즈 등급 중개사입니다. 매물 정보의 정확성을 반드시 재확인하시고, 계약 시 각별히 주의하시기 바랍니다.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <h1 className="text-xl font-bold text-slate-800 mb-2">{land.address || '주소 정보 없음'}</h1>
 
             <div className="flex items-center gap-3 mb-3">
@@ -403,7 +508,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
 
             {/* 스타일 태그 */}
             {land.style_tags && land.style_tags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 items-center">
                 {land.style_tags.map((tag, idx) => (
                   <span
                     key={idx}
@@ -412,6 +517,23 @@ export default function LandDetail({ landId }: LandDetailProps) {
                     #{tag}
                   </span>
                 ))}
+                <div className="relative inline-flex items-center">
+                  <button
+                    className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-300 transition-colors flex items-center justify-center"
+                    onMouseEnter={() => setShowStyleTooltip(true)}
+                    onMouseLeave={() => setShowStyleTooltip(false)}
+                  >
+                    ?
+                  </button>
+                  {showStyleTooltip && (
+                    <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 p-3 z-50">
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        <span className="font-bold text-indigo-600">AI 스타일 태그:</span><br />
+                        매물 설명과 특징을 AI가 분석하여 추출한 핵심 키워드입니다.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -660,6 +782,35 @@ export default function LandDetail({ landId }: LandDetailProps) {
         </div>
       </div>
 
+      {/* 중개사 정보 */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
+          <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>중개사 정보</h3>
+        </div>
+        <div className="p-4">
+          <div className="flex items-start gap-4">
+            <div className="flex-1 space-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 w-24">중개사무소</span>
+                <span className="font-semibold text-slate-800">{land.broker?.office_name || '-'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 w-24">대표자</span>
+                <span className="font-semibold text-slate-800">{land.broker?.representative || '-'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 w-24">연락처</span>
+                <span className="font-semibold text-slate-800">{land.broker?.phone || '-'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 w-24">위치</span>
+                <span className="font-semibold text-slate-800">{land.broker?.address || '-'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 2컬럼 레이아웃: 핵심정보 / 계약 및 매물정보 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 핵심정보 */}
@@ -898,56 +1049,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
         </div>
       </div>
 
-      {/* 중개사 정보 */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-          <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>중개사 정보</h3>
-        </div>
-        <div className="p-4">
-          <div className="flex items-start gap-4">
-            <div className="flex-1 space-y-2 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 w-24">중개사무소</span>
-                <span className="font-semibold text-slate-800">{land.broker?.office_name || '-'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 w-24">대표자</span>
-                <span className="font-semibold text-slate-800">{land.broker?.representative || '-'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 w-24">연락처</span>
-                <span className="font-semibold text-slate-800">{land.broker?.phone || '-'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 w-24">중개사무소 주소</span>
-                <span className="font-semibold text-slate-800 text-xs">{land.broker?.address || '-'}</span>
-              </div>
 
-              {/* 신뢰도 등급 표시 + PNG 아이콘 */}
-              {land.broker?.trust_score && (
-                <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
-                  <span className="text-gray-500 w-24">신뢰도</span>
-                  {getTrustBadgeImage(land.broker.trust_score) && (
-                    <Image
-                      src={getTrustBadgeImage(land.broker.trust_score)!}
-                      alt={`${land.broker.trust_score}`}
-                      width={36}
-                      height={36}
-                      className="object-contain"
-                    />
-                  )}
-                  <span className={`px-3 py-1 rounded-full text-sm font-bold ${land.broker.trust_score === 'A' ? 'bg-yellow-500 text-white' :
-                    land.broker.trust_score === 'B' ? 'bg-gray-400 text-white' :
-                      'bg-amber-700 text-white'
-                    }`}>
-                    {land.broker.trust_score === 'A' ? '골드' : land.broker.trust_score === 'B' ? '실버' : '브론즈'}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

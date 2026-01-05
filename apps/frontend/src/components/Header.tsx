@@ -42,8 +42,8 @@ export default function Header() {
           <Link
             href="/serviceIns"
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${pathname === '/serviceIns'
-                ? 'bg-[var(--color-primary)] text-white'
-                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-primary)]'
+              ? 'bg-[var(--color-primary)] text-white'
+              : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-primary)]'
               }`}
           >
             서비스 소개
@@ -51,21 +51,13 @@ export default function Header() {
           <Link
             href="/community"
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${pathname === '/community'
-                ? 'bg-[var(--color-primary)] text-white'
-                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-primary)]'
+              ? 'bg-[var(--color-primary)] text-white'
+              : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-primary)]'
               }`}
           >
             커뮤니티
           </Link>
-          <Link
-            href="/temperature"
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${pathname === '/temperature'
-                ? 'bg-[var(--color-primary)] text-white'
-                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-hover)] hover:text-[var(--color-primary)]'
-              }`}
-          >
-            온도 상세보기
-          </Link>
+
 
           {/* 마이페이지 / 로그인 버튼 */}
           {session ? (

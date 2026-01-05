@@ -441,66 +441,81 @@ class LandViewSet(viewsets.ReadOnlyModelViewSet):
             if match:
                 current_dong = match.group(1)
         
-        # 후보 매물 필터링: 같은 행정동 + A등급 중개사만 (자기 자신 제외)
-        candidate_queryset = Land.objects.exclude(land_id=current_land.land_id).select_related('landbroker')
+        # 후보 매물을 신뢰도 등급별로 수집 (A → B → C 순서로 fallback)
+        trust_grades = ['A', 'B', 'C']
+        candidates = []
         
-        if current_dong:
-            candidate_queryset = candidate_queryset.filter(address__icontains=current_dong)
-        
-        # A등급 중개사 매물만 추천
-        candidate_queryset = candidate_queryset.filter(landbroker__trust_score='A')
-        
-        # 거래유형 필터링 (같은 거래유형만)
-        if current_land.deal_type:
-            candidate_queryset = candidate_queryset.filter(deal_type=current_land.deal_type)
-        
-        # 가격 범위 필터링 (±30% 범위)
-        # 거래유형에 따라 적절한 가격 컬럼 사용
-        if current_land.deal_type:
-            deal_type = current_land.deal_type.lower()
-            price_margin = 0.3  # ±30%
+        for grade in trust_grades:
+            # 기본 필터링: 같은 행정동 + 특정 등급 중개사 (자기 자신 제외)
+            candidate_queryset = Land.objects.exclude(land_id=current_land.land_id).select_related('landbroker')
             
-            if '월세' in deal_type or '단기임대' in deal_type:
-                # 월세/단기임대: 보증금 + 월세*100 기준
+            if current_dong:
+                candidate_queryset = candidate_queryset.filter(address__icontains=current_dong)
+            
+            # 현재 등급 중개사 매물 필터링
+            candidate_queryset = candidate_queryset.filter(landbroker__trust_score=grade)
+            
+            # 거래유형 필터링 (같은 거래유형만)
+            if current_land.deal_type:
+                candidate_queryset = candidate_queryset.filter(deal_type=current_land.deal_type)
+            
+            # 가격 범위 필터링 (±30% 범위)
+            # 거래유형에 따라 적절한 가격 컬럼 사용
+            if current_land.deal_type:
+                deal_type = current_land.deal_type.lower()
+                price_margin = 0.3  # ±30%
+                
+                if '월세' in deal_type or '단기임대' in deal_type:
+                    # 월세/단기임대: 보증금 + 월세*100 기준
+                    current_price = (current_land.deposit or 0) + (current_land.monthly_rent or 0) * 100
+                    if current_price > 0:
+                        min_price = current_price * (1 - price_margin)
+                        max_price = current_price * (1 + price_margin)
+                        # 후보 매물의 환산 가격 계산 후 필터링 (Django ORM으로는 복잡하므로 나중에 Python에서 필터링)
+                elif '전세' in deal_type:
+                    # 전세: 전세가 기준
+                    current_price = current_land.jeonse_price or 0
+                    if current_price > 0:
+                        min_price = current_price * (1 - price_margin)
+                        max_price = current_price * (1 + price_margin)
+                        candidate_queryset = candidate_queryset.filter(
+                            jeonse_price__gte=min_price,
+                            jeonse_price__lte=max_price
+                        )
+                elif '매매' in deal_type:
+                    # 매매: 매매가 기준
+                    current_price = current_land.sale_price or 0
+                    if current_price > 0:
+                        min_price = current_price * (1 - price_margin)
+                        max_price = current_price * (1 + price_margin)
+                        candidate_queryset = candidate_queryset.filter(
+                            sale_price__gte=min_price,
+                            sale_price__lte=max_price
+                        )
+            
+            # 최대 100개로 제한 (성능 최적화)
+            grade_candidates = list(candidate_queryset[:100])
+            
+            # 월세/단기임대의 경우 Python에서 추가 필터링
+            if current_land.deal_type and ('월세' in current_land.deal_type.lower() or '단기임대' in current_land.deal_type.lower()):
                 current_price = (current_land.deposit or 0) + (current_land.monthly_rent or 0) * 100
                 if current_price > 0:
-                    min_price = current_price * (1 - price_margin)
-                    max_price = current_price * (1 + price_margin)
-                    # 후보 매물의 환산 가격 계산 후 필터링 (Django ORM으로는 복잡하므로 나중에 Python에서 필터링)
-            elif '전세' in deal_type:
-                # 전세: 전세가 기준
-                current_price = current_land.jeonse_price or 0
-                if current_price > 0:
-                    min_price = current_price * (1 - price_margin)
-                    max_price = current_price * (1 + price_margin)
-                    candidate_queryset = candidate_queryset.filter(
-                        jeonse_price__gte=min_price,
-                        jeonse_price__lte=max_price
-                    )
-            elif '매매' in deal_type:
-                # 매매: 매매가 기준
-                current_price = current_land.sale_price or 0
-                if current_price > 0:
-                    min_price = current_price * (1 - price_margin)
-                    max_price = current_price * (1 + price_margin)
-                    candidate_queryset = candidate_queryset.filter(
-                        sale_price__gte=min_price,
-                        sale_price__lte=max_price
-                    )
-        
-        # 최대 100개로 제한 (성능 최적화)
-        candidates = list(candidate_queryset[:100])
-        
-        # 월세/단기임대의 경우 Python에서 추가 필터링
-        if current_land.deal_type and ('월세' in current_land.deal_type.lower() or '단기임대' in current_land.deal_type.lower()):
-            current_price = (current_land.deposit or 0) + (current_land.monthly_rent or 0) * 100
-            if current_price > 0:
-                min_price = current_price * (1 - 0.3)
-                max_price = current_price * (1 + 0.3)
-                candidates = [
-                    c for c in candidates
-                    if min_price <= ((c.deposit or 0) + (c.monthly_rent or 0) * 100) <= max_price
-                ]
+                    min_price = current_price * (1 - 0.3)
+                    max_price = current_price * (1 + 0.3)
+                    grade_candidates = [
+                        c for c in grade_candidates
+                        if min_price <= ((c.deposit or 0) + (c.monthly_rent or 0) * 100) <= max_price
+                    ]
+            
+            # 현재 등급에서 찾은 후보를 전체 후보 리스트에 추가
+            candidates.extend(grade_candidates)
+            
+            # TOP 3 이상 확보되면 더 이상 낮은 등급 검색 안 함
+            if len(candidates) >= 3:
+                logger.info(f"매물 {pk}에 대해 {grade}등급 중개사 매물에서 {len(grade_candidates)}개 발견 (총 {len(candidates)}개)")
+                break
+            elif grade_candidates:
+                logger.info(f"매물 {pk}에 대해 {grade}등급 중개사 매물에서 {len(grade_candidates)}개 발견, 다음 등급 검색 중...")
         
         if not candidates:
             logger.info(f"매물 {pk}에 대한 유사 매물 후보가 없습니다.")
@@ -541,5 +556,3 @@ class LandViewSet(viewsets.ReadOnlyModelViewSet):
         logger.info(f"매물 {pk}에 대한 유사 매물 {len(similar_lands)}개 반환")
         
         return Response({'results': serializer.data})
-
-

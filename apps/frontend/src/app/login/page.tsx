@@ -96,11 +96,7 @@ function LoginContent() {
                     </div>
                 </div>
 
-                {/* 하단 안내 */}
-                <p className="text-center text-xs text-slate-400 mt-6">
-                    로그인 시 <span className="text-blue-500 hover:underline cursor-pointer">이용약관</span> 및{' '}
-                    <span className="text-blue-500 hover:underline cursor-pointer">개인정보처리방침</span>에 동의하게 됩니다.
-                </p>
+
             </div>
         </div>
     );
