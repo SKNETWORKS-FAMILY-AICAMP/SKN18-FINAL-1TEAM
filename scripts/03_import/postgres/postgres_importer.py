@@ -219,17 +219,26 @@ class PostgresImporter:
         listing_info = Json(item.get("매물_정보", {}))
         additional_options = item.get("추가_옵션", [])
         description = item.get("상세_설명")
+        
+        # 스타일태그 및 검색텍스트 추출 (OpenAI로 생성된 값만 사용)
+        style_tags = item.get("style_tags") or item.get("스타일태그")
+        if isinstance(style_tags, list):
+            style_tags = ", ".join(style_tags)
+        
+        search_text = item.get("search_text") or item.get("검색텍스트")
 
         query = """
             INSERT INTO land (
                 land_num, building_type, address, deal_type,
                 deposit, monthly_rent, jeonse_price, sale_price,
                 url, trade_info, listing_info,
-                additional_options, description
+                additional_options, description,
+                style_tags, search_text
             ) VALUES (
                 %s, %s, %s, %s,
                 %s, %s, %s, %s,
                 %s, %s, %s,
+                %s, %s,
                 %s, %s
             )
             ON CONFLICT (land_num) DO UPDATE SET
@@ -245,6 +254,8 @@ class PostgresImporter:
                 listing_info = EXCLUDED.listing_info,
                 additional_options = EXCLUDED.additional_options,
                 description = EXCLUDED.description,
+                style_tags = EXCLUDED.style_tags,
+                search_text = EXCLUDED.search_text,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING land_id, (xmax = 0) AS inserted;
         """
@@ -253,7 +264,8 @@ class PostgresImporter:
             land_num, building_type, address, deal_type,
             deposit, monthly_rent, jeonse_price, sale_price,
             url, trade_info, listing_info,
-            additional_options, description
+            additional_options, description,
+            style_tags, search_text
         ))
         
         result = self.cur.fetchone()

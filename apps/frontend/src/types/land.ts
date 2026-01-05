@@ -31,14 +31,17 @@ export interface Land {
         생활시설?: string[];
         보안시설?: string[];
         기타시설?: string[];
-        방거실형태?: string; 
+        방거실형태?: string;
     };
     jeonse_loan?: string;        // 전세자금대출
     move_in_report?: string;     // 전입신고 여부
     approval_date?: string;      // 사용승인일
     trade_info?: any;            // 거래 정보 JSON
 
-    // 가격 예측 정보 (영어 필드명)
+    // 스타일 태그
+    style_tags?: string[];
+
+    // 가격 예측 정보
     price_prediction?: {
         predicted_class: number;
         predicted_label: string;

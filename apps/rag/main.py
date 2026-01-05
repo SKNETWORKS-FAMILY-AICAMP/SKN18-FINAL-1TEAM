@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from graphs.listing_rag_graph import create_rag_graph
-from common.redis_cache import get_search_context, save_search_context, get_accumulated_results, get_redis_client
+from common.redis_cache import get_search_context, save_search_context, get_accumulated_results, get_redis_client, save_conversation_turn
 from pydantic import BaseModel
 from typing import Optional
 import uuid
@@ -198,8 +198,12 @@ async def query(request: QueryRequest):
         save_search_context(session_id, ids_to_save, facility_type, graph_results[:20])
         logger.info("Saved to cumulative cache", extra={"facility_type": facility_type})
     
+    # 4. 대화 턴 저장 (최근 5개 유지)
+    answer = result.get("answer", "")
+    save_conversation_turn(session_id, request.question, answer)
+    
     return {
-        "answer": result.get("answer"),
+        "answer": answer,
         "session_id": session_id
     }
 

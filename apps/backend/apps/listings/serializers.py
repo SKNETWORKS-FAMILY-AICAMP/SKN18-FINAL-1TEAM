@@ -87,6 +87,9 @@ class LandSerializer(serializers.ModelSerializer):
     
     # listing_info (시설 정보)
     listing_info = serializers.JSONField(read_only=True)
+    
+    # 스타일 태그
+    style_tags = serializers.SerializerMethodField()
 
     class Meta:
         model = Land
@@ -122,7 +125,8 @@ class LandSerializer(serializers.ModelSerializer):
             'broker',
             'price_prediction',
             'temperatures',
-            'listing_info'
+            'listing_info',
+            'style_tags'
         ]
 
     def get_title(self, obj):
@@ -286,3 +290,9 @@ class LandSerializer(serializers.ModelSerializer):
         """Neo4j에서 부동산 온도 정보 조회"""
         return get_land_temperatures(obj.land_num)
     
+    def get_style_tags(self, obj):
+        """스타일 태그 반환 (쉼표 구분 문자열 → 리스트)"""
+        if obj.style_tags:
+            return [tag.strip() for tag in obj.style_tags.split(',') if tag.strip()]
+        return []
+

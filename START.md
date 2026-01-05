@@ -40,7 +40,7 @@ docker compose ps
 docker compose exec backend python manage.py migrate
 
 # 4. 데이터 Import (30분~1시간 소요)
-docker compose --profile scripts run --rm scripts python data_import/main.py
+docker compose --profile scripts run --rm scripts python 03_import/import_all.py
 
 # 5. 완료! 브라우저에서 http://localhost:3000 접속
 ```
@@ -103,7 +103,7 @@ docker compose --profile dashboards up -d
 docker compose --profile analytics up -d
 
 # 스크립트 실행 (데이터 Import 등)
-docker compose --profile scripts run --rm scripts python <스크립트명>
+docker compose --profile scripts run --rm scripts python 03_import/<스크립트명>
 
 # 크롤링
 docker compose --profile crawling run --rm crawling python <스크립트명>
@@ -122,40 +122,98 @@ docker compose exec backend python manage.py migrate
 ### 2️⃣ PostgreSQL 데이터 Import
 
 ```bash
-# 전체 매물 데이터 Import
-docker compose --profile scripts run --rm scripts python data_import/import_postgres_only.py
-
-# 개별 Importer 실행
-docker compose --profile scripts run --rm scripts python data_import/importers/property_importer.py
+# PostgreSQL 매물 데이터 Import
+docker compose --profile scripts run --rm scripts python 03_import/postgres/import_postgres_only.py
 ```
 
 ### 3️⃣ Neo4j 데이터 Import (노드 + 엣지 생성)
 
 ```bash
 # Neo4j 전체 데이터 Import (노드 + 관계)
-docker compose --profile scripts run --rm scripts python data_import/import_neo4j_only.py
+docker compose --profile scripts run --rm scripts python 03_import/neo4j/import_neo4j_only.py
 
-# 중개사 데이터 Import
-docker compose --profile scripts run --rm scripts python data_import/reimport_brokers.py
+# 중개사 데이터 재Import
+docker compose --profile scripts run --rm scripts python 03_import/reimport_brokers.py
 ```
 
 ### 4️⃣ Elasticsearch 인덱싱 + 임베딩
 
 ```bash
 # Elasticsearch 매물 인덱싱 (검색 기능)
-docker compose --profile scripts run --rm scripts python data_import/import_es_index.py --recreate
+docker compose --profile scripts run --rm scripts python 03_import/elasticsearch/import_es_index.py --recreate
 
 # 벡터 임베딩 생성 (RAG 기능)
-docker compose --profile scripts run --rm scripts python data_import/import_es_embeddings.py
+docker compose --profile scripts run --rm scripts python 03_import/elasticsearch/import_es_embeddings.py
 ```
 
 ### 5️⃣ 전체 데이터 Import (권장)
 
 ```bash
 # 모든 데이터베이스 한번에 Import
-docker compose --profile scripts run --rm scripts python data_import/main.py
+docker compose --profile scripts run --rm scripts python 03_import/import_all.py
 ```
 
+```
+
+---
+
+## 🤖 ML 모델 실행 가이드
+
+### 1️⃣ 중개사 신뢰도 모델 (Trust Model)
+
+```bash
+# Step 1: 데이터 전처리 (data/brokerinfo 폴더에 CSV 생성)
+docker compose run --rm reco python models/trust_model/data_preprocessing/run_all_preprocessing.py
+
+# Step 2: 모델 학습 (data/ML/trust/ CSV 및 model/*.pkl 생성)
+docker compose run --rm reco python models/trust_model/run_all.py
+
+# Step 3: 중개사 기본정보 Import
+docker compose --profile scripts run --rm scripts python 03_import/reimport_brokers.py
+
+# Step 4: 중개사 통계정보 Update
+docker compose --profile scripts run --rm scripts python 03_import/update_broker_stats.py
+
+# Step 5: Trust Score 예측 및 DB 저장
+docker compose --profile scripts run --rm scripts python 04_analysis/trust_prediction/predict_trust_scores.py
+```
+
+### 2️⃣ 실거래가 분류 모델 (Price Model)
+
+> 📁 경로: `apps/reco/models/price_model/ML/src`
+
+```bash
+# Step 1: 데이터 전처리 (train/test/모델용.csv 생성)
+docker compose run --rm reco python models/price_model/ML/src/prepare_wolse_dataset.py
+
+# Step 2: 모델 학습 (~5분 소요, pkl 파일 생성)
+docker compose run --rm reco python models/price_model/ML/src/main.py
+
+# Step 3: SHAP 분석 (shap_plots 폴더에 이미지 생성)
+docker compose run --rm reco python models/price_model/ML/src/example_shap.py
+
+# Step 4: 매물에 적용 후 3중 분류 결과 DB 저장
+# ⚠️ 사전 준비: data/RDB/land 폴더에 JSON 파일 필요
+docker compose run --rm reco python models/price_model/ML/src/apply_model_to_json.py
+```
+
+### 3️⃣ 전체 실행 순서 (처음 설정 시)
+
+```bash
+# 1. 인프라 실행
+docker compose up -d
+
+# 2. Django 마이그레이션
+docker compose exec backend python manage.py migrate
+
+# 3. 데이터 Import
+docker compose --profile scripts run --rm scripts python 03_import/import_all.py
+
+# 4. Trust Model 실행 (Step 1~5)
+# 5. Price Model 실행 (Step 1~4)
+
+# 6. 서비스 확인
+# http://localhost:3000 접속
 ```
 
 ---

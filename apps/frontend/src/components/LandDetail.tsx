@@ -350,6 +350,20 @@ export default function LandDetail({ landId }: LandDetailProps) {
                 </div>
               )}
             </div>
+
+            {/* 스타일 태그 */}
+            {land.style_tags && land.style_tags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {land.style_tags.map((tag, idx) => (
+                  <span
+                    key={idx}
+                    className="px-3 py-1.5 bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 rounded-full text-sm font-medium border border-indigo-100 hover:from-indigo-100 hover:to-purple-100 transition-all cursor-default"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

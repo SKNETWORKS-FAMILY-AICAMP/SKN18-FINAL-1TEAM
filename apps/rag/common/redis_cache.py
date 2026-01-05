@@ -9,6 +9,76 @@ import redis
 import json
 import os
 
+# =============================================================================
+# 대화 히스토리 캐시 (최근 5개 질문/답변)
+# =============================================================================
+MAX_CONVERSATION_HISTORY = 5  # 최근 5개 질문만 유지
+
+
+def save_conversation_turn(session_id: str, question: str, answer: str, ttl: int = 86400):
+    """
+    대화 턴 저장 (최근 5개만 유지)
+    
+    Args:
+        session_id: 세션 ID
+        question: 사용자 질문
+        answer: 챗봇 응답 (요약본)
+        ttl: 캐시 유지 시간 (기본 24시간)
+    """
+    try:
+        r = get_redis_client()
+        key = f"conversation:{session_id}"
+        
+        # 기존 히스토리 로드
+        existing = r.get(key)
+        history = json.loads(existing) if existing else []
+        
+        # 새 턴 추가
+        history.append({
+            "question": question,
+            "answer": answer[:500] if answer else ""  # 답변은 500자로 제한
+        })
+        
+        # 최근 5개만 유지
+        history = history[-MAX_CONVERSATION_HISTORY:]
+        
+        r.setex(key, ttl, json.dumps(history, ensure_ascii=False))
+        print(f"[ConversationCache] ✓ Saved turn ({len(history)}/{MAX_CONVERSATION_HISTORY})")
+    except Exception as e:
+        print(f"[ConversationCache] ✗ Save failed: {e}")
+
+
+def get_conversation_history(session_id: str) -> list:
+    """
+    대화 히스토리 조회 (최근 5개)
+    
+    Returns:
+        [{"question": "...", "answer": "..."}, ...]
+    """
+    try:
+        r = get_redis_client()
+        key = f"conversation:{session_id}"
+        data = r.get(key)
+        if data:
+            history = json.loads(data)
+            print(f"[ConversationCache] ✓ Loaded {len(history)} turns")
+            return history
+        print(f"[ConversationCache] No history for session")
+        return []
+    except Exception as e:
+        print(f"[ConversationCache] ✗ Load failed: {e}")
+        return []
+
+
+def clear_conversation_history(session_id: str):
+    """대화 히스토리 삭제"""
+    try:
+        r = get_redis_client()
+        r.delete(f"conversation:{session_id}")
+        print(f"[ConversationCache] ✓ Cleared history")
+    except Exception as e:
+        print(f"[ConversationCache] ✗ Clear failed: {e}")
+
 
 def get_redis_client():
     """Get Redis client with support for both REDIS_URL and individual env vars.

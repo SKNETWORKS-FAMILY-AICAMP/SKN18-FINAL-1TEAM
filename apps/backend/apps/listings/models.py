@@ -103,6 +103,10 @@ class Land(models.Model):
     listing_info = models.JSONField(blank=True, null=True)
     additional_options = models.TextField(blank=True, null=True)
     description = models.TextField(blank=True, null=True)
+    
+    # 스타일태그 및 검색텍스트
+    style_tags = models.TextField(blank=True, null=True, help_text='스타일 태그 (쉼표 구분)')
+    search_text = models.TextField(blank=True, null=True, help_text='검색용 통합 텍스트')
     # agent_info 제거 - landbroker FK로 대체 (데이터 정규화)
     created_at = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(blank=True, null=True)

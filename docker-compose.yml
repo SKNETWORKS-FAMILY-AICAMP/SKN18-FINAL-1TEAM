@@ -38,10 +38,11 @@ services:
   neo4j:
     image: neo4j:5.15
     container_name: realestate-neo4j
+    # Graceful shutdown 시간 부여 (lock 파일 정리 시간 확보)
+    stop_grace_period: 120s
     environment:
       NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?NEO4J_PASSWORD is required}
       NEO4J_PLUGINS: '["apoc"]'
-      # 메모리 제한 제거 - 시스템 리소스 자유롭게 사용
     ports:
       - "7474:7474"
       - "7687:7687"
