@@ -113,17 +113,24 @@ def main():
         if not args.skip_health_check:
             print("\n[사전 검증] DB 연결 확인 중...")
             
+            # Neo4j 연결 확인 (선택적 - 실패 시 건너뛰기)
             if args.only is None or args.only == "neo4j":
-                DatabaseHealthCheck.wait_for_neo4j(
-                    Config.NEO4J_URI, Config.NEO4J_USER, Config.NEO4J_PASSWORD
-                )
+                try:
+                    DatabaseHealthCheck.wait_for_neo4j(
+                        Config.NEO4J_URI, Config.NEO4J_USER, Config.NEO4J_PASSWORD
+                    )
+                except Exception as e:
+                    print(f"⚠️ Neo4j 연결 실패: {e}")
+                    print("  Neo4j Import를 건너뛰고 계속 진행합니다.")
             
+            # PostgreSQL 연결 확인 (필수)
             if args.only is None or args.only == "postgres":
                 DatabaseHealthCheck.wait_for_postgres(
                     Config.POSTGRES_HOST, Config.POSTGRES_PORT,
                     Config.POSTGRES_DB, Config.POSTGRES_USER, Config.POSTGRES_PASSWORD
                 )
             
+            # Elasticsearch 연결 확인 (선택적)
             if args.only is None or args.only in ["es", "elasticsearch"]:
                 try:
                     DatabaseHealthCheck.wait_for_elasticsearch(
