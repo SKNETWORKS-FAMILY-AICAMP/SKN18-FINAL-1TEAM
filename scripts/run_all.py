@@ -51,32 +51,32 @@ def main():
             print(f"⚠️ S3 다운로드 스크립트 없음: {download_script}")
             print("   S3 다운로드 없이 계속 진행합니다...")
     
-    # # Step 1: 크롤링 (환경 변수로 건너뛰기 가능)
-    # if os.getenv('SKIP_CRAWLING', 'false').lower() != 'true':
-    #     print("\n" + "=" * 80)
-    #     print(" " * 20 + "🕷️ [Step 1/4] 크롤링 시작")
-    #     print("=" * 80)
-    # crawl_script = base_dir / "01_crawling" / "peterpan" / "crawl_seoul.py"
-    # if crawl_script.exists():
-    #     print(f"📍 스크립트: {crawl_script}")
-    #     if not run_script(crawl_script):
-    #         print("⚠️ 크롤링 실패, 계속 진행합니다...")
-    # else:
-    #     print(f"⚠️ 크롤링 스크립트 없음: {crawl_script}")
-    #     print("   기존 데이터로 계속 진행합니다...")
+    # Step 1: 크롤링 (환경 변수로 건너뛰기 가능)
+    if os.getenv('SKIP_CRAWLING', 'false').lower() != 'true':
+        print("\n" + "=" * 80)
+        print(" " * 20 + "🕷️ [Step 1/4] 크롤링 시작")
+        print("=" * 80)
+    crawl_script = base_dir / "01_crawling" / "peterpan" / "crawl_seoul.py"
+    if crawl_script.exists():
+        print(f"📍 스크립트: {crawl_script}")
+        if not run_script(crawl_script):
+            print("⚠️ 크롤링 실패, 계속 진행합니다...")
+    else:
+        print(f"⚠️ 크롤링 스크립트 없음: {crawl_script}")
+        print("   기존 데이터로 계속 진행합니다...")
     
-    # # Step 2: 전처리
-    #     print("\n" + "=" * 80)
-    #     print(" " * 20 + "🔧 [Step 2/4] 전처리 시작")
-    #     print("=" * 80)
-    # preprocess_script = base_dir / "02_preprocessing" / "generate_search_text_parallel.py"
-    # if preprocess_script.exists():
-    #     print(f"📍 스크립트: {preprocess_script}")
-    #     if not run_script(preprocess_script):
-    #         print("⚠️ 전처리 실패, 계속 진행합니다...")
-    # else:
-    #     print(f"⚠️ 전처리 스크립트 없음: {preprocess_script}")
-    #     print("   전처리 없이 계속 진행합니다...")
+    # Step 2: 전처리
+        print("\n" + "=" * 80)
+        print(" " * 20 + "🔧 [Step 2/4] 전처리 시작")
+        print("=" * 80)
+    preprocess_script = base_dir / "02_preprocessing" / "generate_search_text_parallel.py"
+    if preprocess_script.exists():
+        print(f"📍 스크립트: {preprocess_script}")
+        if not run_script(preprocess_script):
+            print("⚠️ 전처리 실패, 계속 진행합니다...")
+    else:
+        print(f"⚠️ 전처리 스크립트 없음: {preprocess_script}")
+        print("   전처리 없이 계속 진행합니다...")
     
     # Step 2.5: S3 업로드 (크롤링/전처리 후)
     if os.getenv('UPLOAD_TO_S3', 'false').lower() == 'true':

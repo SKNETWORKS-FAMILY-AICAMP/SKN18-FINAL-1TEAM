@@ -17,7 +17,7 @@ LNG_STEP = 0.015
 
 TARGET_ZONES = {
     # --- 1그룹: 강남권 ---
-    "강남구": {"lat_min": 37.470, "lat_max": 37.535, "lng_min": 127.010, "lng_max": 127.080},
+    # "강남구": {"lat_min": 37.470, "lat_max": 37.535, "lng_min": 127.010, "lng_max": 127.080},
     # "서초구": {"lat_min": 37.440, "lat_max": 37.520, "lng_min": 126.990, "lng_max": 127.050},
     # "송파구": {"lat_min": 37.470, "lat_max": 37.530, "lng_min": 127.070, "lng_max": 127.150},
     # "강동구": {"lat_min": 37.520, "lat_max": 37.580, "lng_min": 127.110, "lng_max": 127.190},
@@ -37,7 +37,7 @@ TARGET_ZONES = {
     # "은평구": {"lat_min": 37.570, "lat_max": 37.650, "lng_min": 126.880, "lng_max": 126.950},
 
     # # --- 4그룹: 도심 & 성동광진 ---
-    # "종로구": {"lat_min": 37.560, "lat_max": 37.630, "lng_min": 126.950, "lng_max": 127.020},
+    "종로구": {"lat_min": 37.560, "lat_max": 37.630, "lng_min": 126.950, "lng_max": 127.020},
     # "중구":   {"lat_min": 37.540, "lat_max": 37.570, "lng_min": 126.960, "lng_max": 127.020},
     # "용산구": {"lat_min": 37.510, "lat_max": 37.555, "lng_min": 126.940, "lng_max": 127.015},
     # "성동구": {"lat_min": 37.530, "lat_max": 37.575, "lng_min": 127.010, "lng_max": 127.070},
@@ -101,10 +101,10 @@ def merge_json_by_category():
         return
 
     category_map = {
-        "아파트": "00_통합_아파트.json",
-        "원투룸": "00_통합_원투룸.json",
+        # "아파트": "00_통합_아파트.json",
+        # "원투룸": "00_통합_원투룸.json",
         "빌라주택": "00_통합_빌라주택.json",
-        "오피스텔": "00_통합_오피스텔.json"
+        # "오피스텔": "00_통합_오피스텔.json"
     }
 
     all_files = [f for f in os.listdir(data_dir) if f.endswith(".json")]
@@ -502,10 +502,10 @@ async def run_zone_batch(zone_name):
 
     AREA_FILTER_PREFIX = "checkRealSize:999~40||"
     CATEGORIES = [
-        {"name": "아파트", "base": "https://www.peterpanz.com/apt", "filt": AREA_FILTER_PREFIX + 'buildingType;["아파트"]', "out": f"{zone_name}_아파트.json"},
-        {"name": "원,투룸", "base": "https://www.peterpanz.com/onetworoom", "filt": AREA_FILTER_PREFIX + 'buildingType;["원,투룸"]', "out": f"{zone_name}_원투룸.json"},
+        # {"name": "아파트", "base": "https://www.peterpanz.com/apt", "filt": AREA_FILTER_PREFIX + 'buildingType;["아파트"]', "out": f"{zone_name}_아파트.json"},
+        # {"name": "원,투룸", "base": "https://www.peterpanz.com/onetworoom", "filt": AREA_FILTER_PREFIX + 'buildingType;["원,투룸"]', "out": f"{zone_name}_원투룸.json"},
         {"name": "빌라,주택", "base": "https://www.peterpanz.com/villa", "filt": AREA_FILTER_PREFIX + 'buildingType;["빌라","주택"]', "out": f"{zone_name}_빌라주택.json"},
-        {"name": "오피스텔", "base": "https://www.peterpanz.com/officetel", "filt": AREA_FILTER_PREFIX + 'buildingType;["오피스텔"]', "out": f"{zone_name}_오피스텔.json"},
+        # {"name": "오피스텔", "base": "https://www.peterpanz.com/officetel", "filt": AREA_FILTER_PREFIX + 'buildingType;["오피스텔"]', "out": f"{zone_name}_오피스텔.json"},
     ]
 
     coordinates = generate_coordinate_grid(zone_name)
@@ -794,7 +794,7 @@ async def run_zone_batch(zone_name):
 # 5. 실행부
 # ======================================================
 GROUPS = {
-    1: ["강남구"]
+    1: ["종로구"]
     # 1: ["강남구", "서초구", "송파구", "강동구"],
     # 2: ["관악구", "동작구", "영등포구", "구로구", "금천구"],
     # 3: ["강서구", "양천구", "마포구", "서대문구", "은평구"],
