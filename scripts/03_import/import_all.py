@@ -30,22 +30,22 @@ from config import Config
 from db_health_check import DatabaseHealthCheck
 
 
-def import_neo4j():
-    """Neo4j 데이터 Import (subprocess로 실행)"""
-    print("\n" + "=" * 70)
-    print(" " * 20 + "📦 Neo4j Import 시작")
-    print("=" * 70)
+# def import_neo4j():
+#     """Neo4j 데이터 Import (subprocess로 실행)"""
+#     print("\n" + "=" * 70)
+#     print(" " * 20 + "📦 Neo4j Import 시작")
+#     print("=" * 70)
     
-    neo4j_script = IMPORT_DIR / "neo4j" / "import_neo4j_only.py"
-    result = subprocess.run(
-        [sys.executable, str(neo4j_script)],
-        cwd=str(IMPORT_DIR / "neo4j")
-    )
+#     neo4j_script = IMPORT_DIR / "neo4j" / "import_neo4j_only.py"
+#     result = subprocess.run(
+#         [sys.executable, str(neo4j_script)],
+#         cwd=str(IMPORT_DIR / "neo4j")
+#     )
     
-    if result.returncode != 0:
-        raise RuntimeError(f"Neo4j Import 실패 (exit code: {result.returncode})")
+#     if result.returncode != 0:
+#         raise RuntimeError(f"Neo4j Import 실패 (exit code: {result.returncode})")
     
-    print("\n✅ Neo4j Import 완료!")
+#     print("\n✅ Neo4j Import 완료!")
 
 
 def import_postgres():
@@ -66,22 +66,22 @@ def import_postgres():
     print("\n✅ PostgreSQL Import 완료!")
 
 
-def import_elasticsearch():
-    """Elasticsearch 데이터 Import (subprocess로 실행)"""
-    print("\n" + "=" * 70)
-    print(" " * 20 + "🔍 Elasticsearch Import 시작")
-    print("=" * 70)
+# def import_elasticsearch():
+#     """Elasticsearch 데이터 Import (subprocess로 실행)"""
+#     print("\n" + "=" * 70)
+#     print(" " * 20 + "🔍 Elasticsearch Import 시작")
+#     print("=" * 70)
     
-    es_script = IMPORT_DIR / "elasticsearch" / "es817_property_importer.py"
-    result = subprocess.run(
-        [sys.executable, str(es_script)],
-        cwd=str(IMPORT_DIR / "elasticsearch")
-    )
+#     es_script = IMPORT_DIR / "elasticsearch" / "es817_property_importer.py"
+#     result = subprocess.run(
+#         [sys.executable, str(es_script)],
+#         cwd=str(IMPORT_DIR / "elasticsearch")
+#     )
     
-    if result.returncode != 0:
-        raise RuntimeError(f"Elasticsearch Import 실패 (exit code: {result.returncode})")
+#     if result.returncode != 0:
+#         raise RuntimeError(f"Elasticsearch Import 실패 (exit code: {result.returncode})")
     
-    print("\n✅ Elasticsearch Import 완료!")
+#     print("\n✅ Elasticsearch Import 완료!")
 
 
 def import_trust():
@@ -151,15 +151,15 @@ def main():
         if not args.skip_health_check:
             print("\n[사전 검증] DB 연결 확인 중...")
             
-            # Neo4j 연결 확인 (선택적 - 실패 시 건너뛰기)
-            if args.only is None or args.only == "neo4j":
-                try:
-                    DatabaseHealthCheck.wait_for_neo4j(
-                        Config.NEO4J_URI, Config.NEO4J_USER, Config.NEO4J_PASSWORD
-                    )
-                except Exception as e:
-                    print(f"⚠️ Neo4j 연결 실패: {e}")
-                    print("  Neo4j Import를 건너뛰고 계속 진행합니다.")
+            # # Neo4j 연결 확인 (선택적 - 실패 시 건너뛰기)
+            # if args.only is None or args.only == "neo4j":
+            #     try:
+            #         DatabaseHealthCheck.wait_for_neo4j(
+            #             Config.NEO4J_URI, Config.NEO4J_USER, Config.NEO4J_PASSWORD
+            #         )
+            #     except Exception as e:
+            #         print(f"⚠️ Neo4j 연결 실패: {e}")
+            #         print("  Neo4j Import를 건너뛰고 계속 진행합니다.")
             
             # PostgreSQL 연결 확인 (필수)
             if args.only is None or args.only == "postgres":
@@ -168,16 +168,16 @@ def main():
                     Config.POSTGRES_DB, Config.POSTGRES_USER, Config.POSTGRES_PASSWORD
                 )
             
-            # Elasticsearch 연결 확인 (선택적)
-            if args.only is None or args.only in ["es", "elasticsearch"]:
-                try:
-                    DatabaseHealthCheck.wait_for_elasticsearch(
-                        os.getenv("ELASTICSEARCH_HOST", "elasticsearch"),
-                        int(os.getenv("ELASTICSEARCH_PORT", "9200"))
-                    )
-                except Exception as e:
-                    print(f"⚠️ Elasticsearch 연결 실패: {e}")
-                    print("  Elasticsearch Import를 건너뜁니다.")
+            # # Elasticsearch 연결 확인 (선택적)
+            # if args.only is None or args.only in ["es", "elasticsearch"]:
+            #     try:
+            #         DatabaseHealthCheck.wait_for_elasticsearch(
+            #             os.getenv("ELASTICSEARCH_HOST", "elasticsearch"),
+            #             int(os.getenv("ELASTICSEARCH_PORT", "9200"))
+            #         )
+            #     except Exception as e:
+            #         print(f"⚠️ Elasticsearch 연결 실패: {e}")
+            #         print("  Elasticsearch Import를 건너뜁니다.")
             
             print("✓ DB 연결 확인 완료")
         
