@@ -36,20 +36,20 @@ def main():
     print(f"시작 시간: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 80)
     
-    # Step 0: S3 데이터 다운로드 (선택적)
-    if os.getenv('DOWNLOAD_FROM_S3', 'false').lower() == 'true':
-        print("\n" + "=" * 80)
-        print(" " * 20 + "📥 [Step 0/5] S3 데이터 다운로드")
-        print("=" * 80)
-        download_script = base_dir / "download_from_s3.py"
-        if download_script.exists():
-            print(f"📍 스크립트: {download_script}")
-            if not run_script(download_script):
-                print("❌ S3 다운로드 실패")
-                sys.exit(1)
-        else:
-            print(f"⚠️ S3 다운로드 스크립트 없음: {download_script}")
-            print("   S3 다운로드 없이 계속 진행합니다...")
+    # # Step 0: S3 데이터 다운로드 (선택적)
+    # if os.getenv('DOWNLOAD_FROM_S3', 'false').lower() == 'true':
+    #     print("\n" + "=" * 80)
+    #     print(" " * 20 + "📥 [Step 0/5] S3 데이터 다운로드")
+    #     print("=" * 80)
+    #     download_script = base_dir / "download_from_s3.py"
+    #     if download_script.exists():
+    #         print(f"📍 스크립트: {download_script}")
+    #         if not run_script(download_script):
+    #             print("❌ S3 다운로드 실패")
+    #             sys.exit(1)
+    #     else:
+    #         print(f"⚠️ S3 다운로드 스크립트 없음: {download_script}")
+    #         print("   S3 다운로드 없이 계속 진행합니다...")
     
     # Step 1: 크롤링 (환경 변수로 건너뛰기 가능)
     if os.getenv('SKIP_CRAWLING', 'false').lower() != 'true':

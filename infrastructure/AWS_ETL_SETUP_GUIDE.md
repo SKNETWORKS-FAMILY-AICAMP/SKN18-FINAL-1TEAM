@@ -1,1204 +1,899 @@
-# AWS ETL 파이프라인 구축 완벽 가이드
+# AWS ETL 파이프라인 설정 가이드
 
-**목표**: 매일 12:00 PM KST에 자동으로 실행되는 부동산 데이터 ETL 파이프라인 구축
-
----
-
-## 🏗️ 전체 시스템 아키텍처
-
-### 현재 구현된 아키텍처 (2026-01-05 기준)
-
-```mermaid
-graph TB
-    subgraph AWS["☁️ AWS Cloud - ap-northeast-2"]
-        subgraph Trigger["스케줄링 & 트리거"]
-            User[👤 사용자/개발자<br/>수동 실행]
-            EB[⏰ EventBridge<br/>매일 12:00 PM KST<br/>cron: 0 3 * * ?]
-        end
-
-        subgraph Container["컨테이너 환경"]
-            ECR[📦 ECR Repository<br/>realestate-scripts:latest<br/>940075378738.dkr.ecr...]
-            ECS[🚀 ECS Fargate<br/>Cluster: realestate-etl-cluster<br/>4 vCPU, 16GB RAM]
-        end
-
-        subgraph Storage["S3 Storage"]
-            S3[(☁️ S3 Bucket<br/>realestate-etl-data<br/>Prefix: data/<br/>193MB 데이터)]
-        end
-
-        subgraph VPC["� VPC - 10.0.0.0/16"]
-            subgraph PublicSubnet["Public Subnet - 10.0.1.0/24"]
-                ECS_Task[⚙️ ECS Task<br/>subnet-0d88da4dbe1be58fe<br/>Public IP 할당]
-            end
-            
-            subgraph PrivateSubnet["Private Subnet - 10.0.2.0/24"]
-                RDS[(� RDS PostgreSQL<br/>db.t3.micro<br/>realestate-postgres<br/>Port: 5432)]
-            end
-            
-            subgraph EC2_Layer["EC2 Instances"]
-                Neo4j_EC2[🔗 EC2 Neo4j<br/>t3.small<br/>Private IP: 10.0.1.90<br/>Port: 7687<br/>연결 타임아웃 이슈]
-                ES_EC2[🔍 EC2 Elasticsearch<br/>t3.medium 권장<br/>현재 건너뛰기<br/>Port: 9200]
-            end
-        end
-
-        subgraph Security["보안 & 인증"]
-            SG[🛡️ Security Group<br/>sg-0b2bdef4bce788976<br/>Inbound: 5432, 7687, 9200<br/>Self-reference: All]
-            IAM_Exec[� Execution Role<br/>ECR Pull, CloudWatch Logs]
-            IAM_Task[� Task Role<br/>S3 읽기/쓰기]
-        end
-
-        subgraph Monitoring["모니터링"]
-            CW[📊 CloudWatch Logs<br/>/ecs/realestate-etl<br/>보존: 7일<br/>실시간 스트리밍]
-        end
-    end
-
-    subgraph Pipeline["ETL Pipeline - run_all.py"]
-        Step0[� Step 0: S3 다운로드<br/>download_from_s3.py<br/>DOWNLOAD_FROM_S3=true]
-        Step1[�️ Step 1: 크롤링<br/>crawl_seoul.py<br/>현재 주석 처리]
-        Step2[� Step 2: 전처리<br/>generate_search_text_parallel.py<br/>현재 주석 처리]
-        Step2_5[📤 Step 2.5: S3 업로드<br/>upload_to_s3.py<br/>UPLOAD_TO_S3=true]
-        Step2_7[� Step 2.7: 스키마 마이그레이션<br/>add_columns.py<br/>style_tags, search_text]
-        Step3[� Step 3: 데이터 Import<br/>import_all.py]
-        Step4[🤖 Step 4: ML 모델<br/>apply_price_classification.py]
-    end
-
-    subgraph ImportDetail["Import 세부 단계"]
-        Neo4j_Import[� Neo4j Import<br/>try-except 보호<br/>실패 시 건너뛰기]
-        PG_Import[💾 PostgreSQL Import<br/>postgres_importer.py<br/>9,915건 데이터]
-        ES_Import[🔍 Elasticsearch Import<br/>try-except 보호<br/>현재 건너뛰기]
-    end
-
-    subgraph External["외부 API"]
-        OpenAI[🤖 OpenAI API<br/>GPT-4<br/>검색 텍스트 생성]
-        Kakao[🗺️ Kakao Map API<br/>좌표 변환]
-    end
-
-    User -->|수동 실행| ECS
-    EB -.->|자동 트리거<br/>향후 구현| ECS
-    
-    ECS -->|Pull Image| ECR
-    ECS -->|Task 생성| ECS_Task
-    
-    ECS_Task -->|Step 0| Step0
-    Step0 -->|다운로드| S3
-    Step0 -->|데이터 로드| Step2_7
-    
-    Step1 -.->|주석 처리| Step2
-    Step2 -.->|주석 처리| Step2_5
-    Step2_5 -.->|업로드| S3
-    
-    Step2_7 -->|컬럼 추가| Step3
-    Step3 -->|순차 실행| Neo4j_Import
-    Neo4j_Import -->|성공/실패| PG_Import
-    PG_Import -->|성공| ES_Import
-    ES_Import -->|완료| Step4
-    
-    Neo4j_Import -.->|타임아웃| Neo4j_EC2
-    PG_Import -->|데이터 저장| RDS
-    ES_Import -.->|건너뛰기| ES_EC2
-    Step4 -->|가격 등급 업데이트| RDS
-    
-    Step1 -.->|API 호출| Kakao
-    Step2 -.->|API 호출| OpenAI
-    
-    SG -->|보안 규칙| ECS_Task
-    SG -->|보안 규칙| RDS
-    SG -->|보안 규칙| Neo4j_EC2
-    SG -->|보안 규칙| ES_EC2
-    
-    IAM_Exec -->|권한| ECS
-    IAM_Task -->|권한| ECS_Task
-    
-    ECS_Task -.->|로그 전송| CW
-
-    style AWS fill:#FFF9E6,stroke:#FF8C42,stroke-width:3px
-    style VPC fill:#E6F3FF,stroke:#4ECDC4,stroke-width:2px
-    style EB fill:#FF6B6B,stroke:#333,stroke-width:2px
-    style ECS fill:#FF8C42,stroke:#333,stroke-width:2px
-    style ECR fill:#FF9F43,stroke:#333,stroke-width:2px
-    style S3 fill:#FF9F43,stroke:#333,stroke-width:3px
-    style Step2_7 fill:#4ECDC4,stroke:#333,stroke-width:2px
-    style RDS fill:#4ECDC4,stroke:#333,stroke-width:2px
-    style Neo4j_EC2 fill:#FFE66D,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
-    style ES_EC2 fill:#A8E6CF,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
-    style CW fill:#95E1D3,stroke:#333,stroke-width:2px
-    style Step1 fill:#E0E0E0,stroke:#999,stroke-width:1px,stroke-dasharray: 3 3
-    style Step2 fill:#E0E0E0,stroke:#999,stroke-width:1px,stroke-dasharray: 3 3
-    style SG fill:#FFB6C1,stroke:#333,stroke-width:2px
-```
-
-### 주요 구성 요소
-
-#### 1️⃣ 사용자 & 스케줄링
-- **👤 사용자/개발자**: 수동 실행 및 모니터링
-- **⏰ EventBridge**: 매일 12:00 PM KST 자동 실행 (향후 구현)
-  - Cron 표현식: `0 3 * * ?` (UTC)
-
-#### 2️⃣ 컨테이너 실행 환경
-- **📦 ECR**: Docker 이미지 저장소
-  - 이미지: `940075378738.dkr.ecr.ap-northeast-2.amazonaws.com/realestate-scripts:latest`
-- **🚀 ECS Fargate**: 서버리스 컨테이너 실행
-  - CPU: 4 vCPU
-  - 메모리: 16GB RAM
-  - 실행 명령: `python -u scripts/run_all.py`
-
-#### 3️⃣ ETL 파이프라인 (4단계)
-1. **🕷️ 크롤링** (`crawl_seoul.py`)
-   - Playwright Headless Chromium
-   - 피터팬 부동산 사이트
-   - 소요 시간: 1개 자치구 ~5-10분, 25개 자치구 ~3-4시간
-
-2. **🔧 전처리** (`generate_search_text_parallel.py`)
-   - OpenAI API (GPT-4)
-   - 검색 텍스트 생성, 스타일 태그 추출
-   - 소요 시간: ~30분
-
-3. **📦 Import** (`import_all.py`)
-   - Neo4j: 그래프 데이터
-   - PostgreSQL: 관계형 데이터
-   - Elasticsearch: 검색 인덱스
-   - 소요 시간: ~10-20분
-
-4. **🤖 가격 분류** (`apply_price_classification.py`)
-   - ML 모델로 가격 등급 분류 (A/B/C/D)
-   - 소요 시간: ~5분
-
-#### 4️⃣ 데이터베이스 Layer
-- **💾 RDS PostgreSQL** (db.t3.micro)
-  - 엔드포인트: `realestate-postgres.cx0uwsiue937.ap-northeast-2.rds.amazonaws.com`
-  - 포트: 5432
-  - 용도: 메인 데이터 저장, 프론트엔드 API
-
-- **🔗 EC2 Neo4j** (t3.small)
-  - IP: `13.124.11.170:7687`
-  - 비밀번호: `Neo4j2024!Secure`
-  - 용도: 매물 관계 분석, 유사 매물 추천
-
-- **🔍 EC2 Elasticsearch** (t3.medium 권장)
-  - IP: `43.201.29.36:9200`
-  - 용도: 전문 검색, 자동완성
-  - 대안: 로컬 Docker 또는 AWS OpenSearch
-
-#### 5️⃣ 보안 & 인증
-- **🛡️ Security Group** (`sg-0b2bdef4bce788976`)
-  - PostgreSQL: 5432
-  - Neo4j: 7687
-  - Elasticsearch: 9200
-  - Self-reference: 모든 포트 (ECS ↔ DB)
-
-- **🔑 IAM Roles**
-  - Task Role: ECS 실행 권한
-  - Execution Role: ECR Pull, CloudWatch Logs
-
-#### 6️⃣ 모니터링
-- **📊 CloudWatch Logs** (`/ecs/realestate-etl`)
-  - 실시간 로그 스트리밍
-  - 보존 기간: 7일
-
-#### 7️⃣ 외부 API
-- **🤖 OpenAI API**: 검색 텍스트 생성
-- **🗺️ Kakao API**: 지도 데이터
-
----
-
-### 데이터 흐름
-
-```
-1. EventBridge (12:00 PM) → ECS Task 트리거
-2. ECS → ECR에서 Docker 이미지 Pull
-3. run_all.py 실행
-   ↓
-4. [Step 1] 크롤링 → RDS 저장
-5. [Step 2] 전처리 → OpenAI API 호출
-6. [Step 3] Import → Neo4j, PostgreSQL, Elasticsearch
-7. [Step 4] 가격 분류 → PostgreSQL 업데이트
-   ↓
-8. CloudWatch Logs 기록
-9. 완료 (총 소요 시간: ~5시간)
-```
-
----
-
-### 💰 예상 비용
-
-| 항목 | 사양 | 월 비용 |
-|------|------|---------|
-| RDS PostgreSQL | db.t3.micro | ~$15 |
-| EC2 Neo4j | t3.small | ~$15 |
-| EC2 Elasticsearch | t3.medium | ~$30 |
-| ECS Fargate | 4 vCPU, 16GB, 5시간/일 | ~$5 |
-| ECR | 10GB | ~$1 |
-| CloudWatch Logs | 5GB/월 | ~$3 |
-| OpenAI API | ~100K tokens/일 | ~$3 |
-| **총계** | | **~$72/월** |
-
-**프리 티어 할인 후**: ~$50/월
-
----
-
-### ✅ 구현 완료 항목
-- ECS Fargate 클러스터 및 Task Definition
-- ECR Docker 이미지 저장소
-- RDS PostgreSQL 데이터베이스
-- EC2 Neo4j 그래프 데이터베이스
-- Security Group 네트워크 보안
-- IAM Roles 권한 관리
-- CloudWatch Logs 모니터링
-- 전체 ETL 파이프라인 (4단계)
-
-### 🔜 향후 구현 예정
-- **EventBridge**: 자동 스케줄링 (매일 12:00 PM)
-- **Step Functions**: 워크플로우 오케스트레이션
-- **Lambda**: 단계별 검증 함수
-- **SNS**: 성공/실패 알림
-- **Elasticsearch**: t3.medium 업그레이드
-
----
-
-## ✅ 검증 완료 항목
-
-다음 항목들은 실제 테스트를 통해 정상 작동이 확인되었습니다:
-
-### 인프라
-- ✅ VPC 및 서브넷 생성 완료
-- ✅ 보안 그룹 설정 완료 (`sg-0b2bdef4bce788976`)
-- ✅ IAM 역할 생성 완료
-- ✅ S3 버킷 생성 완료
-
-### 데이터베이스
-- ✅ **Neo4j EC2 설치 및 연결 성공** (`13.124.11.170:7687`)
-  - EC2 Instance Connect로 접속
-  - 비밀번호: `Neo4j2024!Secure`
-  - 외부 접속 허용 (`0.0.0.0:7687`)
-  - 로컬 및 ECS에서 연결 확인됨
-- ✅ RDS PostgreSQL 생성 완료 (`realestate-postgres.cx0uwsiue937...`)
-  - ECS 환경에서 연결 가능 (VPC 내부 통신)
-- ✅ Elasticsearch EC2 생성 완료 (`43.201.29.36:9200`)
-  - ECS 환경에서 연결 가능
-
-### Docker 및 ECS
-- ✅ ECR 리포지토리 생성 완료
-- ✅ Docker 이미지 빌드 성공
-  - Playwright 브라우저 설치 완료
-  - Headless 모드 설정 완료
-- ✅ ECS 클러스터 생성 완료
-- ✅ Task Definition 등록 완료
-
-### ETL 파이프라인
-- ✅ **크롤링 작동 확인** (ECS Fargate 환경)
-  - Playwright headless 모드 정상 작동
-  - 서울 전역 크롤링 가능
-- ⏳ 전처리 (OpenAI API 연동)
-- ⏳ Neo4j Import
-- ⏳ PostgreSQL Import
-- ⏳ Elasticsearch Import
-- ⏳ 가격 분류 모델 적용
-
-### 보안 그룹 규칙
-- ✅ VPC 내부 통신 (`10.0.0.0/16`)
-- ✅ Self-reference 규칙 (ECS ↔ Neo4j)
-- ✅ 로컬 IP 허용 (개발/테스트용)
-  - Neo4j: 7687
-  - PostgreSQL: 5432 (로컬 네트워크 제약으로 ECS에서만 가능)
-  - Elasticsearch: 9200 (로컬 네트워크 제약으로 ECS에서만 가능)
-
-### 알려진 제약사항
-- ⚠️ 로컬 네트워크에서 PostgreSQL(5432), Elasticsearch(9200) 포트 차단
-  - **해결책**: ECS 환경에서 실행 (VPC 내부 통신 사용)
-- ⚠️ 전체 파이프라인 실행 시간: 약 5시간 (서울 전역 크롤링)
+> 부동산 데이터 수집부터 분석까지 완전 자동화된 AWS 기반 ETL 파이프라인
 
 ---
 
 ## 📋 목차
 
-1. [사전 준비](#1-사전-준비)
-2. [Phase 1: AWS 기본 인프라](#phase-1-aws-기본-인프라)
-3. [Phase 2: 데이터베이스 구축](#phase-2-데이터베이스-구축)
-4. [Phase 3: Docker 이미지 준비](#phase-3-docker-이미지-준비)
-5. [Phase 4: ECS 클러스터 및 태스크 정의](#phase-4-ecs-클러스터-및-태스크-정의)
-6. [Phase 5: EventBridge 스케줄링](#phase-5-eventbridge-스케줄링)
-7. [Phase 6: 테스트 및 검증](#phase-6-테스트-및-검증)
-8. [문제 해결](#문제-해결)
+1. [아키텍처 개요](#아키텍처-개요)
+2. [파이프라인 흐름](#파이프라인-흐름)
+3. [AWS 리소스 구성](#aws-리소스-구성)
+4. [사전 준비사항](#사전-준비사항)
+5. [인프라 설정 단계](#인프라-설정-단계)
+6. [파이프라인 실행](#파이프라인-실행)
+7. [모니터링 및 알림](#모니터링-및-알림)
+8. [트러블슈팅](#트러블슈팅)
 
 ---
 
-## 1. 사전 준비
+## 아키텍처 개요
 
-### 1.1 필수 도구 설치
+### 전체 시스템 아키텍처
 
-```powershell
-# AWS CLI 설치 확인
-aws --version
+```mermaid
+flowchart TB
+    subgraph Scheduling["⏰ 스케줄링 계층"]
+        EB[("EventBridge<br/>스케줄러")]
+    end
+    
+    subgraph Orchestration["🎭 오케스트레이션 계층"]
+        SF["Step Functions<br/>상태 머신"]
+    end
+    
+    subgraph Parallel["⚙️ 병렬 처리 - 5개 ECS Task"]
+        direction LR
+        subgraph Task1["Task 1: 강남권"]
+            direction TB
+            T1C["크롤링"]
+            T1P["전처리"]
+            T1S["S3 업로드"]
+            T1C --> T1P --> T1S
+        end
+        subgraph Task2["Task 2: 중구권"]
+            direction TB
+            T2C["크롤링"]
+            T2P["전처리"]
+            T2S["S3 업로드"]
+            T2C --> T2P --> T2S
+        end
+        subgraph Task3["Task 3: 성북권"]
+            direction TB
+            T3C["크롤링"]
+            T3P["전처리"]
+            T3S["S3 업로드"]
+            T3C --> T3P --> T3S
+        end
+        subgraph Task4["Task 4: 마포권"]
+            direction TB
+            T4C["크롤링"]
+            T4P["전처리"]
+            T4S["S3 업로드"]
+            T4C --> T4P --> T4S
+        end
+        subgraph Task5["Task 5: 금천권"]
+            direction TB
+            T5C["크롤링"]
+            T5P["전처리"]
+            T5S["S3 업로드"]
+            T5C --> T5P --> T5S
+        end
+    end
+    
+    subgraph Sequential["🔄 순차 처리 - 1개 ECS Task"]
+        direction TB
+        IMPORT["DB Import<br/>PostgreSQL, ES, Neo4j"]
+        MODEL["ML 모델 적용<br/>가격분류, 신뢰도"]
+        IMPORT --> MODEL
+    end
+    
+    subgraph Storage["💾 스토리지 계층"]
+        S3[("S3 Bucket<br/>전체 데이터")]
+    end
+    
+    subgraph Database["🗄️ 데이터베이스 계층"]
+        RDS[("PostgreSQL<br/>매물 데이터")]
+        ES[("Elasticsearch<br/>벡터 검색")]
+        NEO4J[("Neo4j<br/>그래프 DB")]
+    end
+    
+    subgraph Notification["📢 알림 계층"]
+        SNS["SNS Topic"]
+        EMAIL["📧 이메일"]
+    end
+    
+    EB -->|"매일 12:00"| SF
+    SF -->|"병렬 실행"| Task1 & Task2 & Task3 & Task4 & Task5
+    T1S & T2S & T3S & T4S & T5S -->|"각자 데이터"| S3
+    Task1 & Task2 & Task3 & Task4 & Task5 -->|"모두 완료"| IMPORT
+    S3 -->|"전체 데이터"| IMPORT
+    IMPORT --> RDS & ES & NEO4J
+    RDS -->|"모델 적용"| MODEL
+    MODEL -->|"결과 저장"| RDS
+    SF -->|"성공/실패"| SNS
+    SNS --> EMAIL
 
-# Docker Desktop 설치 확인
-docker --version
-
-# Git 설치 확인
-git --version
 ```
 
-### 1.2 AWS 계정 설정
+### 병렬 처리 아키텍처 (옵션 1: 권장)
 
-```powershell
-# AWS CLI 설정
+```mermaid
+flowchart TB
+    EB["EventBridge<br/>12:00 KST"]
+    SF["Step Functions"]
+    
+    subgraph Parallel["🔀 병렬 단계 (5개 동시)"]
+        direction LR
+        subgraph T1["Task 1<br/>강남권"]
+            direction TB
+            C1["크롤링"]
+            P1["전처리"]
+            S1["S3"]
+            C1 --> P1 --> S1
+        end
+        subgraph T2["Task 2<br/>중구권"]
+            direction TB
+            C2["크롤링"]
+            P2["전처리"]
+            S2["S3"]
+            C2 --> P2 --> S2
+        end
+        subgraph T3["Task 3<br/>성북권"]
+            direction TB
+            C3["크롤링"]
+            P3["전처리"]
+            S3["S3"]
+            C3 --> P3 --> S3
+        end
+        subgraph T4["Task 4<br/>마포권"]
+            direction TB
+            C4["크롤링"]
+            P4["전처리"]
+            S4["S3"]
+            C4 --> P4 --> S4
+        end
+        subgraph T5["Task 5<br/>금천권"]
+            direction TB
+            C5["크롤링"]
+            P5["전처리"]
+            S5["S3"]
+            C5 --> P5 --> S5
+        end
+    end
+    
+    subgraph Sequential["🔄 순차 단계 (1번만)"]
+        direction TB
+        IMPORT["DB Import Task<br/>S3 전체 데이터"]
+        MODEL["ML Model Task<br/>DB 전체 데이터"]
+        IMPORT --> MODEL
+    end
+    
+    subgraph DB["공유 리소스"]
+        S3DB[("S3<br/>전체 데이터")]
+        RDS[("PostgreSQL")]
+        ES[("Elasticsearch")]
+        NEO4J[("Neo4j")]
+    end
+    
+    SNS["SNS 알림"]
+    
+    EB --> SF
+    SF ==>|"병렬 실행"| T1 & T2 & T3 & T4 & T5
+    S1 & S2 & S3 & S4 & S5 ==> S3DB
+    T1 & T2 & T3 & T4 & T5 ==>|"모두 완료 후"| IMPORT
+    S3DB --> IMPORT
+    IMPORT --> RDS & ES & NEO4J
+    RDS --> MODEL
+    MODEL --> RDS
+    MODEL ==> SNS
+```
+
+> [!IMPORTANT]
+> **중복 방지 설계:**
+> 
+> **병렬 단계 (5개 동시):**
+> - 각 Task는 **자신의 구역만** 크롤링
+> - 전처리 후 **각자 S3에 업로드**
+> - DB Import나 ML 모델은 **실행하지 않음**
+> 
+> **순차 단계 (1번만):**
+> - **S3의 모든 데이터**를 한 번에 Import
+> - **DB의 모든 데이터**에 한 번만 모델 적용
+> - ✅ 중복 없음, 효율적
+
+### 기술 스택
+
+| 구성 요소 | AWS 서비스 | 용도 |
+|----------|-----------|------|
+| 스케줄러 | **EventBridge Scheduler** | 매일 12:00 파이프라인 자동 실행 |
+| 오케스트레이터 | **Step Functions** | 워크플로우 관리 및 에러 핸들링 |
+| 컴퓨팅 | **ECS Fargate** | 크롤러, 전처리, Import, 모델 실행 |
+| 서버리스 함수 | **Lambda** | 데이터 검증, 경량 작업 처리 |
+| 컨테이너 레지스트리 | **ECR** | Docker 이미지 저장 |
+| 데이터 스토리지 | **S3** | 크롤링 데이터 백업 (JSON/Parquet) |
+| 관계형 DB | **RDS PostgreSQL** | 매물 정보 마스터 DB |
+| 검색 엔진 | **Elasticsearch** | 시맨틱 검색 및 추천 |
+| 그래프 DB | **Neo4j (EC2)** | 지역-매물 관계 그래프 |
+| 시크릿 관리 | **Secrets Manager** | DB 자격 증명 보관 |
+| 알림 | **SNS** | 성공/실패 이메일 알림 |
+| 로깅 | **CloudWatch Logs** | 실행 로그 수집 |
+
+---
+
+## 파이프라인 흐름
+
+### ETL 파이프라인 단계별 흐름 (5개 병렬 크롤링)
+
+```mermaid
+flowchart TB
+    subgraph Step1["Step 1: 병렬 크롤링 - 5개 ECS Task"]
+        direction LR
+        C1["Task 1<br/>강남권"]
+        C2["Task 2<br/>중구권"]
+        C3["Task 3<br/>성북권"]
+        C4["Task 4<br/>마포권"]
+        C5["Task 5<br/>금천권"]
+    end
+    
+    subgraph Step2["Step 2: 전처리 & S3 저장"]
+        P1["검색 텍스트 생성"]
+        S1["S3 업로드"]
+    end
+    
+    subgraph Step3["Step 3: DB Import - 병렬"]
+        direction LR
+        D1["PostgreSQL"]
+        D2["Elasticsearch"]
+        D3["Neo4j"]
+    end
+    
+```
+realestate-{component}-{environment}
+```
+
+### 주요 리소스 목록
+
+| 리소스 유형 | 리소스 이름 | 설명 |
+|------------|-----------|------|
+| ECR Repository | `realestate-scripts` | ETL 스크립트 Docker 이미지 |
+| ECS Cluster | `realestate-cluster` | Fargate 클러스터 |
+| ECS Task Definition | `realestate-crawl-task` | 크롤링 태스크 정의 (5개 병렬) |
+| ECS Task Definition | `realestate-import-task` | DB Import 태스크 정의 |
+| ECS Task Definition | `realestate-model-task` | ML 모델 적용 태스크 정의 |
+| Step Functions | `realestate-etl-pipeline` | 워크플로우 상태 머신 |
+| EventBridge Rule | `realestate-daily-schedule` | 일일 스케줄 (12:00 KST) |
+| S3 Bucket | `realestate-data-{account-id}` | 크롤링 데이터 저장 |
+| S3 Object | `s3://bucket/models/price_model_lightgbm.pkl` | 가격 분류 모델 (LightGBM) |
+| S3 Object | `s3://bucket/models/final_trust_model.pkl` | 신뢰도 예측 모델 (XGBoost) |
+| SNS Topic | `realestate-etl-notifications` | 파이프라인 알림 |
+| RDS Instance | `realestate-postgres` | PostgreSQL 데이터베이스 |
+| RDS Table | `land` | 매물 정보 테이블 |
+| RDS Table | `landbroker` | 중개사 정보 테이블 |
+| RDS Table | `price_classification_results` | 가격 분류 결과 테이블 |
+| Secrets Manager | `realestate/db-credentials` | DB 접속 정보 |
+
+---
+
+## 사전 준비사항
+
+### 1. 로컬 환경 설정
+
+```bash
+# AWS CLI 설치 및 설정
 aws configure
 
-# 입력 정보:
-# - AWS Access Key ID
-# - AWS Secret Access Key
-# - Default region: ap-northeast-2
-# - Default output format: json
+# Docker Desktop 설치 (WSL2 백엔드 권장)
+# https://www.docker.com/products/docker-desktop
+
+# PowerShell 7+ 권장
+winget install Microsoft.PowerShell
 ```
 
-### 1.3 AWS CLI 출력 형식 확인
-
-```powershell
-# 출력 형식이 "json"인지 확인 (중요!)
-aws configure get output
-
-# 만약 "josn" 또는 다른 값이면 수정
-aws configure set output json
-```
-
-### 1.4 프로젝트 클론
-
-```powershell
-cd C:\dev
-git clone https://github.com/SKNETWORKS-FAMILY-AICAMP/SKN18-FINAL-1TEAM.git
-cd SKN18-FINAL-1TEAM
-```
-
----
-
-## Phase 1: AWS 기본 인프라
-
-### 1.1 자동 설정 스크립트 실행
-
-```powershell
-cd infrastructure
-powershell -ExecutionPolicy Bypass -File .\setup-aws.ps1
-```
-
-**생성되는 리소스:**
-- VPC (10.0.0.0/16)
-- Public Subnets 2개 (ap-northeast-2a, 2c)
-- Private Subnets 2개
-- Internet Gateway
-- Security Group (포트: 22, 5432, 7687, 9200)
-- IAM Roles (ECS Execution, Task)
-- S3 Bucket (realestate-etl-data)
-
-**예상 시간**: 5-10분
-
-### 1.2 생성된 리소스 확인
-
-```powershell
-# 리소스 ID 확인
-type aws-resources-verified.txt
-```
-
-**중요**: 다음 정보를 메모하세요:
-- VPC ID: `vpc-xxxxxxxxx`
-- Public Subnet IDs: `subnet-xxxxxxxxx` (2개)
-- Security Group ID: `sg-xxxxxxxxx`
-
----
-
-## Phase 2: 데이터베이스 구축
-
-### 2.1 EC2 인스턴스 생성 (Neo4j, Elasticsearch)
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\setup-databases-fixed.ps1
-```
-
-**생성되는 리소스:**
-- EC2 Neo4j (t3.micro)
-- EC2 Elasticsearch (t3.small)
-
-**예상 시간**: 3-5분 (초기화 포함)
-
-### 2.2 RDS PostgreSQL 수동 생성 (AWS Console)
-
-**이유**: Windows PowerShell에서 RDS 생성 시 오류 발생 가능
-
-#### 2.2.1 DB 서브넷 그룹 생성
-
-```powershell
-# PowerShell에서 실행
-powershell -ExecutionPolicy Bypass -File .\create-db-subnet-group.ps1
-```
-
-#### 2.2.2 AWS Console에서 RDS 생성
-
-1. **AWS Console 접속**: https://console.aws.amazon.com/rds/
-2. **리전 확인**: 서울 (ap-northeast-2)
-3. **데이터베이스 생성** 클릭
-
-**설정값:**
-
-| 항목 | 값 |
-|------|-----|
-| 엔진 | PostgreSQL 15.15-R1 (최신 15.x) |
-| 템플릿 | 프리 티어 |
-| DB 인스턴스 식별자 | `realestate-postgres` |
-| 마스터 사용자 이름 | `postgres` |
-| 마스터 암호 | `RealEstate2024!Secure` |
-| DB 인스턴스 클래스 | db.t3.micro |
-| 스토리지 | 20 GiB gp3 |
-| VPC | `vpc-xxxxxxxxx` (Phase 1에서 생성) |
-| DB 서브넷 그룹 | `realestate-db-subnet-group` |
-| 퍼블릭 액세스 | **예** |
-| VPC 보안 그룹 | `sg-xxxxxxxxx` (realestate-sg) |
-| 초기 데이터베이스 이름 | `realestate` |
-
-4. **생성** 클릭 (5-10분 소요)
-
-#### 2.2.3 RDS 엔드포인트 확인
-
-RDS가 "사용 가능" 상태가 되면:
-
-```powershell
-aws rds describe-db-instances --db-instance-identifier realestate-postgres --query "DBInstances[0].Endpoint.Address" --output text
-```
-
-**결과 예시**: `realestate-postgres.cx0uwsiue937.ap-northeast-2.rds.amazonaws.com`
-
-### 2.3 Secrets Manager 설정
-
-```powershell
-# Secrets 생성
-powershell -ExecutionPolicy Bypass -File .\create-secrets.ps1
-```
-
-**생성되는 Secrets:**
-- `realestate/postgres`
-- `realestate/neo4j`
-- `realestate/elasticsearch`
-
-### 2.4 Neo4j 수동 설치 및 설정 (중요!)
-
-**이유**: EC2 인스턴스 생성 스크립트가 Neo4j를 자동 설치하지 않을 수 있음
-
-#### 2.4.1 EC2 Instance Connect로 접속
-
-1. **EC2 Console** → Instances
-2. Neo4j 인스턴스 선택 (Tag: `realestate-neo4j`)
-3. **Connect** 버튼 클릭
-4. **EC2 Instance Connect** 탭
-5. **Connect** 클릭
-
-#### 2.4.2 Neo4j 설치 및 설정
-
-EC2 Instance Connect 터미널에서 실행:
+### 2. 환경 변수 (.env)
 
 ```bash
-# 1. Neo4j 설치
-wget -O - https://debian.neo4j.com/neotechnology.gpg.key | sudo apt-key add -
-echo 'deb https://debian.neo4j.com stable latest' | sudo tee /etc/apt/sources.list.d/neo4j.list
-sudo apt-get update
-sudo apt-get install -y neo4j
+# Database Connections
+POSTGRES_HOST=realestate-postgres.xxxxx.ap-northeast-2.rds.amazonaws.com
+POSTGRES_PORT=5432
+POSTGRES_DB=realestate
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your-secure-password
 
-# 2. Neo4j 중지 (비밀번호 설정 전)
-sudo systemctl stop neo4j
+# Elasticsearch
+ELASTICSEARCH_HOST=your-elasticsearch-host
+ELASTICSEARCH_PORT=9200
+ELASTICSEARCH_INDEX=real_estate_listings
 
-# 3. 기존 인증 정보 삭제 (이미 설정된 경우)
-sudo rm -rf /var/lib/neo4j/data/dbms/auth
+# Neo4j
+NEO4J_URI=bolt://your-neo4j-host:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your-neo4j-password
 
-# 4. 초기 비밀번호 설정 (작은따옴표 필수!)
-sudo neo4j-admin dbms set-initial-password 'Neo4j2024!Secure'
+# OpenAI (Embeddings)
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxx
 
-# 5. 모든 IP에서 접속 허용 (0.0.0.0)
-echo "dbms.default_listen_address=0.0.0.0" | sudo tee -a /etc/neo4j/neo4j.conf
-
-# 6. Neo4j 시작 및 자동 시작 설정
-sudo systemctl enable neo4j
-sudo systemctl start neo4j
-
-# 7. 상태 확인
-sudo systemctl status neo4j
-
-# 8. 포트 확인 (*:7687 또는 0.0.0.0:7687이어야 함)
-sudo ss -tlnp | grep 7687
+# AWS
+AWS_REGION=ap-northeast-2
+S3_BUCKET=realestate-data-940075378738
 ```
 
-**예상 결과**: 
-```
-*:7687                  *:*                    users:(("java",pid=7062,fd=382))
-```
+### 3. 필요한 IAM 권한
 
-#### 2.4.3 Neo4j 연결 테스트
+ECS Task Role에 필요한 권한:
 
-```bash
-# EC2에서 로컬 연결 테스트 (선택사항)
-cypher-shell -u neo4j -p 'Neo4j2024!Secure'
-# 성공하면 neo4j> 프롬프트 표시
-# :exit 로 종료
-```
-
-### 2.5 KAKAO_API_KEY 발급 (선택사항)
-
-크롤링 시 Kakao API를 사용하는 경우 필요:
-
-1. **Kakao Developers** 접속: https://developers.kakao.com/
-2. 로그인
-3. **내 애플리케이션** → **애플리케이션 추가하기**
-4. 앱 이름: `realestate-etl`
-5. 생성 후 **앱 키** → **REST API 키** 복사
-6. 나중에 Task Definition에 환경 변수로 추가
-
-### 2.6 Elasticsearch EC2 인스턴스 생성 및 설정 (선택사항)
-
-> **참고**: 프리 티어 계정에서는 t3.micro만 사용 가능하며, Elasticsearch 실행에 메모리가 부족할 수 있습니다. 
-> 유료 계정에서 t3.medium 이상 권장합니다.
-
-#### 2.6.1 t3.medium 인스턴스 생성 (유료 계정)
-
-```powershell
-# Elasticsearch 인스턴스 생성
-aws ec2 run-instances `
-  --image-id ami-0c9c942bd7bf113a2 `
-  --instance-type t3.medium `
-  --key-name realestate-key `
-  --security-group-ids sg-0b2bdef4bce788976 `
-  --subnet-id subnet-0d88da4dbe1be58fe `
-  --associate-public-ip-address `
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=realestate-elasticsearch}]' `
-  --region ap-northeast-2
-
-# 인스턴스 정보 확인
-aws ec2 describe-instances `
-  --filters "Name=tag:Name,Values=realestate-elasticsearch" "Name=instance-state-name,Values=running,pending" `
-  --query "Reservations[0].Instances[0].[InstanceId,PublicIpAddress,InstanceType]" `
-  --output table `
-  --region ap-northeast-2
-```
-
-#### 2.6.2 Elasticsearch 설치 (EC2 Instance Connect)
-
-**AWS Console → EC2 → Instances → Connect → EC2 Instance Connect**
-
-```bash
-#!/bin/bash
-
-# 1. Java 설치
-sudo apt-get update
-sudo apt-get install -y openjdk-11-jdk wget
-
-# 2. Elasticsearch 7.x 저장소 추가 (8.x보다 가벼움)
-wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
-echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-7.x.list
-
-# 3. Elasticsearch 설치
-sudo apt-get update
-sudo apt-get install -y elasticsearch
-
-# 4. 힙 메모리 설정
-# t3.medium (4GB RAM): 1GB 할당
-echo "-Xms1g" | sudo tee /etc/elasticsearch/jvm.options.d/heap.options
-echo "-Xmx1g" | sudo tee -a /etc/elasticsearch/jvm.options.d/heap.options
-
-# t3.micro (1GB RAM): 256MB 할당 (메모리 부족 가능성 있음)
-# echo "-Xms256m" | sudo tee /etc/elasticsearch/jvm.options.d/heap.options
-# echo "-Xmx256m" | sudo tee -a /etc/elasticsearch/jvm.options.d/heap.options
-
-# 5. 네트워크 설정 (외부 접근 허용)
-echo "network.host: 0.0.0.0" | sudo tee -a /etc/elasticsearch/elasticsearch.yml
-echo "discovery.type: single-node" | sudo tee -a /etc/elasticsearch/elasticsearch.yml
-
-# 6. Elasticsearch 시작 및 자동 시작 설정
-sudo systemctl enable elasticsearch
-sudo systemctl start elasticsearch
-
-# 7. 상태 확인
-echo "Elasticsearch 시작 중... (약 30초 대기)"
-sleep 30
-sudo systemctl status elasticsearch
-
-# 8. 포트 확인
-sudo ss -tlnp | grep 9200
-
-# 9. 연결 테스트
-curl http://localhost:9200/_cluster/health
-```
-
-**예상 결과:**
 ```json
 {
-  "cluster_name": "elasticsearch",
-  "status": "green",
-  "number_of_nodes": 1
-}
-```
-
-#### 2.6.3 프리 티어 대안: AWS OpenSearch Service
-
-프리 티어 계정에서는 **AWS OpenSearch Service** 사용 권장 (12개월 무료):
-
-```powershell
-# OpenSearch 도메인 생성
-aws opensearch create-domain `
-  --domain-name realestate-search `
-  --engine-version "OpenSearch_2.11" `
-  --cluster-config "InstanceType=t3.small.search,InstanceCount=1" `
-  --ebs-options "EBSEnabled=true,VolumeType=gp3,VolumeSize=10" `
-  --access-policies '{
-    "Version": "2012-10-17",
-    "Statement": [{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
       "Effect": "Allow",
-      "Principal": {"AWS": "*"},
-      "Action": "es:*",
-      "Resource": "arn:aws:es:ap-northeast-2:*:domain/realestate-search/*"
-    }]
-  }' `
-  --region ap-northeast-2
-
-# 엔드포인트 확인
-aws opensearch describe-domain --domain-name realestate-search --query "DomainStatus.Endpoint" --output text --region ap-northeast-2
-```
-
-**프리 티어 제공:**
-- ✅ t3.small.search (750시간/월, 12개월)
-- ✅ 10GB EBS 스토리지
-- ✅ 2GB RAM (충분한 메모리)
-
----
-
-## Phase 3: Docker 이미지 준비
-
-### 3.1 .dockerignore 수정
-
-**중요**: `scripts` 폴더가 Docker 이미지에 포함되도록 설정
-
-파일: `.dockerignore` (프로젝트 루트)
-
-**수정 전 (163번 줄):**
-```
-scripts/
-```
-
-**수정 후:**
-```
-# scripts/  # ECS Fargate에서는 scripts가 필요하므로 주석 처리
-```
-
-### 3.2 Dockerfile 확인
-
-파일: `infra/docker/scripts.Dockerfile`
-
-**내용 확인:**
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY infra/docker/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# libs와 scripts 복사
-COPY libs /app/libs
-COPY scripts /app/scripts
-
-ENV PYTHONPATH=/app:/app/libs:/app/scripts
-
-CMD ["python", "-u"]
-```
-
-### 3.3 ECR 리포지토리 생성
-
-```powershell
-cd C:\dev\SKN18-FINAL-1TEAM
-
-aws ecr create-repository `
-  --repository-name realestate-scripts `
-  --image-scanning-configuration scanOnPush=true `
-  --region ap-northeast-2
-```
-
-### 3.4 Docker 이미지 빌드 및 푸시
-
-```powershell
-# 1. ECR 로그인
-aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 940075378738.dkr.ecr.ap-northeast-2.amazonaws.com
-
-# 2. Docker 이미지 빌드
-docker build -f infra/docker/scripts.Dockerfile -t realestate-scripts:latest .
-
-# 3. 태그 지정 (AWS Account ID를 본인 것으로 변경)
-docker tag realestate-scripts:latest 940075378738.dkr.ecr.ap-northeast-2.amazonaws.com/realestate-scripts:latest
-
-# 4. ECR에 푸시
-docker push 940075378738.dkr.ecr.ap-northeast-2.amazonaws.com/realestate-scripts:latest
-```
-
-**예상 시간**: 10-15분
-
-### 3.5 이미지 확인
-
-```powershell
-aws ecr describe-images --repository-name realestate-scripts --region ap-northeast-2
-```
-
----
-
-## Phase 4: ECS 클러스터 및 태스크 정의
-
-### 4.1 IAM 역할 생성
-
-**중요**: Phase 1 스크립트가 실패했을 경우 수동 생성 필요
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\create-iam-roles.ps1
-```
-
-**또는 AWS Console에서 수동 생성:**
-
-#### 4.1.1 realestate-ecs-execution-role
-
-1. **IAM Console** → Roles → Create role
-2. **Trusted entity**: AWS service
-3. **Use case**: Elastic Container Service → **Elastic Container Service Task**
-4. **Permissions policies**:
-   - `AmazonECSTaskExecutionRolePolicy` 선택
-5. **Role name**: `realestate-ecs-execution-role`
-6. **Create role**
-7. 생성된 역할 → Add permissions → Create inline policy:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": ["secretsmanager:GetSecretValue", "kms:Decrypt"],
-    "Resource": "*"
-  }]
-}
-```
-
-Policy name: `SecretsManagerAccess`
-
-#### 4.1.2 realestate-ecs-task-role
-
-1. **IAM Console** → Roles → Create role
-2. **Trusted entity**: AWS service
-3. **Use case**: Elastic Container Service → **Elastic Container Service Task**
-4. **Next** (정책 선택 안 함)
-5. **Role name**: `realestate-ecs-task-role`
-6. **Create role**
-7. 생성된 역할 → Add permissions → Create inline policy:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": ["s3:PutObject", "s3:GetObject", "s3:ListBucket"],
-    "Resource": [
-      "arn:aws:s3:::realestate-etl-data/*",
-      "arn:aws:s3:::realestate-etl-data"
-    ]
-  }]
-}
-```
-
-Policy name: `S3Access`
-
-### 4.2 ECS 클러스터 및 로그 그룹 생성
-
-```powershell
-# ECS 클러스터 생성
-aws ecs create-cluster --cluster-name realestate-etl-cluster --region ap-northeast-2
-
-# CloudWatch 로그 그룹 생성
-aws logs create-log-group --log-group-name /ecs/realestate-etl --region ap-northeast-2
-```
-
-### 4.3 Task Definition 생성 (AWS Console)
-
-**이유**: Windows PowerShell에서 JSON 파일 전달 시 오류 발생
-
-1. **ECS Console** → Task definitions → Create new task definition
-2. **Create new task definition with JSON** 선택
-3. 다음 JSON 붙여넣기 (AWS Account ID, RDS Endpoint, IP 주소 수정):
-
-```json
-{
-  "family": "realestate-etl-task",
-  "networkMode": "awsvpc",
-  "requiresCompatibilities": ["FARGATE"],
-  "cpu": "4096",
-  "memory": "16384",
-  "executionRoleArn": "arn:aws:iam::940075378738:role/realestate-ecs-execution-role",
-  "taskRoleArn": "arn:aws:iam::940075378738:role/realestate-ecs-task-role",
-  "containerDefinitions": [{
-    "name": "etl-container",
-    "image": "940075378738.dkr.ecr.ap-northeast-2.amazonaws.com/realestate-scripts:latest",
-    "essential": true,
-    "command": ["python", "-u", "scripts/run_all.py"],
-    "environment": [
-      {"name": "AWS_DEFAULT_REGION", "value": "ap-northeast-2"},
-      {"name": "TZ", "value": "Asia/Seoul"},
-      {"name": "KAKAO_API_KEY", "value": "your_kakao_api_key_here"},
-      {"name": "POSTGRES_HOST", "value": "realestate-postgres.cx0uwsiue937.ap-northeast-2.rds.amazonaws.com"},
-      {"name": "POSTGRES_PORT", "value": "5432"},
-      {"name": "POSTGRES_DB", "value": "realestate"},
-      {"name": "POSTGRES_USER", "value": "postgres"},
-      {"name": "POSTGRES_PASSWORD", "value": "RealEstate2024!Secure"},
-      {"name": "NEO4J_URI", "value": "bolt://13.124.11.170:7687"},
-      {"name": "NEO4J_USER", "value": "neo4j"},
-      {"name": "NEO4J_PASSWORD", "value": "Neo4j2024!Secure"},
-      {"name": "ES_HOST", "value": "43.201.29.36"},
-      {"name": "ES_PORT", "value": "9200"}
-    ],
-    "logConfiguration": {
-      "logDriver": "awslogs",
-      "options": {
-        "awslogs-group": "/ecs/realestate-etl",
-        "awslogs-region": "ap-northeast-2",
-        "awslogs-stream-prefix": "ecs"
-      }
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::realestate-data-*",
+        "arn:aws:s3:::realestate-data-*/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "arn:aws:secretsmanager:ap-northeast-2:*:secret:realestate/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "*"
     }
-  }]
+  ]
 }
 ```
 
-**수정 필요한 값:**
-- `940075378738` → 본인의 AWS Account ID
-- `realestate-postgres.cx0uwsiue937...` → 본인의 RDS 엔드포인트
-- `13.124.11.170` → 본인의 Neo4j EC2 Public IP
-- `43.201.29.36` → 본인의 Elasticsearch EC2 Public IP
-
-4. **Create** 클릭
-
 ---
 
-## Phase 5: EventBridge 스케줄링
+## 인프라 설정 단계
 
-### 5.1 자동 설정 스크립트 실행
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\setup-eventbridge.ps1
-```
-
-**생성되는 리소스:**
-- SNS Topic: `realestate-etl-notifications`
-- IAM Role: `realestate-eventbridge-role`
-- EventBridge Rule: `realestate-etl-daily` (cron: 0 3 * * ? *)
-- ECS Target 설정
-
-**스케줄**: 매일 03:00 UTC = 12:00 PM KST
-
-**예상 시간**: 2-3분
-
----
-
-## Phase 6: 테스트 및 검증
-
-### 6.1 수동 ECS 태스크 실행
+### Phase 1: 네트워크 및 기본 인프라
 
 ```powershell
-# Public Subnet ID를 본인 것으로 변경
-aws ecs run-task `
-  --cluster realestate-etl-cluster `
-  --task-definition realestate-etl-task:1 `
-  --launch-type FARGATE `
-  --network-configuration "awsvpcConfiguration={subnets=[subnet-0d88da4dbe1be58fe],securityGroups=[sg-0b2bdef4bce788976],assignPublicIp=ENABLED}" `
-  --region ap-northeast-2
+# 1. VPC 및 서브넷 생성 (기존 default VPC 사용 가능)
+cd infrastructure
+
+# 2. 보안 그룹 생성
+.\setup-aws.ps1
 ```
 
-### 6.2 CloudWatch 로그 확인
+### Phase 2: 데이터베이스 설정
 
 ```powershell
-# 실시간 로그 확인
-aws logs tail /ecs/realestate-etl --follow --region ap-northeast-2
+# 1. RDS PostgreSQL 생성
+.\create-rds.ps1
+
+# 2. Secrets Manager에 자격 증명 저장
+.\create-secrets.ps1
+
+# 3. 데이터베이스 연결 확인
+.\verify-rds.ps1
 ```
 
-**예상 로그:**
-```
-🚀 ETL 파이프라인 시작
-🕷️ [Step 1/4] 크롤링 시작
-🔧 [Step 2/4] 전처리 시작
-📦 [Step 3/4] 데이터 Import 시작
-🤖 [Step 4/4] 가격 분류 모델 적용 시작
-✅ ETL 파이프라인 완료!
-```
-
-### 6.3 데이터베이스 확인
+### Phase 3: Docker 이미지 빌드 및 ECR 푸시
 
 ```powershell
-# PostgreSQL 연결
-psql -h [RDS_ENDPOINT] -U postgres -d realestate
+# 1. ECR 리포지토리 생성 및 이미지 푸시
+.\build-and-push.ps1
 
-# 테이블 확인
-\dt
-
-# 데이터 확인
-SELECT COUNT(*) FROM land;
-SELECT COUNT(*) FROM price_classification_results;
+# 빌드되는 Dockerfile: infra/docker/scripts.Dockerfile
 ```
 
-### 6.4 EventBridge 스케줄 확인
+> [!IMPORTANT]
+> Dockerfile에 Playwright 브라우저 설치가 포함되어 있어야 합니다.
+> ```dockerfile
+> RUN playwright install --with-deps chromium
+> ```
+
+### Phase 4: ECS 클러스터 및 태스크 정의
 
 ```powershell
-# 규칙 상태 확인
-aws events describe-rule --name realestate-etl-daily --region ap-northeast-2
+# 1. ECS 클러스터 생성
+.\setup-ecs.ps1
+
+# 2. 태스크 정의 등록
+.\register-task.ps1
 ```
 
----
+### Phase 5: Step Functions 상태 머신 (5개 병렬 태스크)
 
-## 문제 해결
-
-### 문제 1: AWS CLI 출력 형식 오류
-
-**증상**: `Unknown output type: josn`
-
-**해결**:
-```powershell
-aws configure set output json
-```
-
-### 문제 2: Docker 이미지에 scripts 폴더 없음
-
-**증상**: `can't open file '/app/scripts/run_all.py'`
-
-**해결**:
-1. `.dockerignore`에서 `scripts/` 주석 처리
-2. Docker 이미지 재빌드 및 푸시
-3. Task Definition 새 revision 생성
-
-### 문제 3: IAM 역할 assume 오류
-
-**증상**: `ECS was unable to assume the role`
-
-**해결**:
-1. IAM Console에서 역할 확인
-2. Trust relationships 탭에서 신뢰 정책 확인:
+> [!IMPORTANT]
+> Step Functions의 **Parallel** 상태를 사용하여 5개의 크롤링 태스크를 동시에 실행합니다.
+> 각 태스크는 `CRAWL_GROUP` 환경변수로 담당 구역을 구분합니다.
 
 ```json
 {
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {"Service": "ecs-tasks.amazonaws.com"},
-    "Action": "sts:AssumeRole"
-  }]
+  "Comment": "부동산 ETL 파이프라인 - 5개 병렬 크롤링",
+  "StartAt": "ParallelCrawling",
+  "States": {
+    "ParallelCrawling": {
+      "Type": "Parallel",
+      "Comment": "5개 ECS 태스크를 동시에 실행하여 서울 25개 구를 병렬 크롤링",
+      "Branches": [
+        {
+          "StartAt": "CrawlGroup1",
+          "States": {
+            "CrawlGroup1": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::ecs:runTask.sync",
+              "Parameters": {
+                "LaunchType": "FARGATE",
+                "Cluster": "arn:aws:ecs:ap-northeast-2:940075378738:cluster/realestate-cluster",
+                "TaskDefinition": "realestate-crawl-task",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets": ["subnet-xxxxx"],
+                    "SecurityGroups": ["sg-xxxxx"],
+                    "AssignPublicIp": "ENABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [{
+                    "Name": "realestate-scripts",
+                    "Environment": [
+                      {"Name": "CRAWL_GROUP", "Value": "1"},
+                      {"Name": "CRAWL_DISTRICTS", "Value": "강남구,서초구,송파구,강동구,광진구"}
+                    ]
+                  }]
+                }
+              },
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "CrawlGroup2",
+          "States": {
+            "CrawlGroup2": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::ecs:runTask.sync",
+              "Parameters": {
+                "LaunchType": "FARGATE",
+                "Cluster": "arn:aws:ecs:ap-northeast-2:940075378738:cluster/realestate-cluster",
+                "TaskDefinition": "realestate-crawl-task",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets": ["subnet-xxxxx"],
+                    "SecurityGroups": ["sg-xxxxx"],
+                    "AssignPublicIp": "ENABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [{
+                    "Name": "realestate-scripts",
+                    "Environment": [
+                      {"Name": "CRAWL_GROUP", "Value": "2"},
+                      {"Name": "CRAWL_DISTRICTS", "Value": "중구,종로구,용산구,성동구,동대문구"}
+                    ]
+                  }]
+                }
+              },
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "CrawlGroup3",
+          "States": {
+            "CrawlGroup3": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::ecs:runTask.sync",
+              "Parameters": {
+                "LaunchType": "FARGATE",
+                "Cluster": "arn:aws:ecs:ap-northeast-2:940075378738:cluster/realestate-cluster",
+                "TaskDefinition": "realestate-crawl-task",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets": ["subnet-xxxxx"],
+                    "SecurityGroups": ["sg-xxxxx"],
+                    "AssignPublicIp": "ENABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [{
+                    "Name": "realestate-scripts",
+                    "Environment": [
+                      {"Name": "CRAWL_GROUP", "Value": "3"},
+                      {"Name": "CRAWL_DISTRICTS", "Value": "성북구,강북구,도봉구,노원구,중랑구"}
+                    ]
+                  }]
+                }
+              },
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "CrawlGroup4",
+          "States": {
+            "CrawlGroup4": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::ecs:runTask.sync",
+              "Parameters": {
+                "LaunchType": "FARGATE",
+                "Cluster": "arn:aws:ecs:ap-northeast-2:940075378738:cluster/realestate-cluster",
+                "TaskDefinition": "realestate-crawl-task",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets": ["subnet-xxxxx"],
+                    "SecurityGroups": ["sg-xxxxx"],
+                    "AssignPublicIp": "ENABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [{
+                    "Name": "realestate-scripts",
+                    "Environment": [
+                      {"Name": "CRAWL_GROUP", "Value": "4"},
+                      {"Name": "CRAWL_DISTRICTS", "Value": "마포구,서대문구,은평구,영등포구,구로구"}
+                    ]
+                  }]
+                }
+              },
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "CrawlGroup5",
+          "States": {
+            "CrawlGroup5": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::ecs:runTask.sync",
+              "Parameters": {
+                "LaunchType": "FARGATE",
+                "Cluster": "arn:aws:ecs:ap-northeast-2:940075378738:cluster/realestate-cluster",
+                "TaskDefinition": "realestate-crawl-task",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets": ["subnet-xxxxx"],
+                    "SecurityGroups": ["sg-xxxxx"],
+                    "AssignPublicIp": "ENABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [{
+                    "Name": "realestate-scripts",
+                    "Environment": [
+                      {"Name": "CRAWL_GROUP", "Value": "5"},
+                      {"Name": "CRAWL_DISTRICTS", "Value": "금천구,관악구,동작구,양천구,강서구"}
+                    ]
+                  }]
+                }
+              },
+              "End": true
+            }
+          }
+        }
+      ],
+      "Next": "RunPreprocessing",
+      "Catch": [{
+        "ErrorEquals": ["States.ALL"],
+        "ResultPath": "$.error",
+        "Next": "NotifyFailure"
+      }]
+    },
+    "RunPreprocessing": {
+      "Type": "Task",
+      "Comment": "크롤링 데이터 전처리 및 S3 업로드",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "LaunchType": "FARGATE",
+        "Cluster": "arn:aws:ecs:ap-northeast-2:940075378738:cluster/realestate-cluster",
+        "TaskDefinition": "realestate-preprocess-task",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ["subnet-xxxxx"],
+            "SecurityGroups": ["sg-xxxxx"],
+            "AssignPublicIp": "ENABLED"
+          }
+        }
+      },
+      "Next": "RunDBImport",
+      "Catch": [{
+        "ErrorEquals": ["States.ALL"],
+        "ResultPath": "$.error",
+        "Next": "NotifyFailure"
+      }]
+    },
+    "RunDBImport": {
+      "Type": "Task",
+      "Comment": "PostgreSQL, Elasticsearch, Neo4j에 데이터 Import",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "LaunchType": "FARGATE",
+        "Cluster": "arn:aws:ecs:ap-northeast-2:940075378738:cluster/realestate-cluster",
+        "TaskDefinition": "realestate-import-task",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ["subnet-xxxxx"],
+            "SecurityGroups": ["sg-xxxxx"],
+            "AssignPublicIp": "ENABLED"
+          }
+        }
+      },
+      "Next": "RunModelApplication",
+      "Catch": [{
+        "ErrorEquals": ["States.ALL"],
+        "ResultPath": "$.error",
+        "Next": "NotifyFailure"
+      }]
+    },
+    "RunModelApplication": {
+      "Type": "Task",
+      "Comment": "가격 분류 및 신뢰도 모델 적용",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "LaunchType": "FARGATE",
+        "Cluster": "arn:aws:ecs:ap-northeast-2:940075378738:cluster/realestate-cluster",
+        "TaskDefinition": "realestate-model-task",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ["subnet-xxxxx"],
+            "SecurityGroups": ["sg-xxxxx"],
+            "AssignPublicIp": "ENABLED"
+          }
+        }
+      },
+      "Next": "NotifySuccess",
+      "Catch": [{
+        "ErrorEquals": ["States.ALL"],
+        "ResultPath": "$.error",
+        "Next": "NotifyFailure"
+      }]
+    },
+    "NotifySuccess": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:ap-northeast-2:940075378738:realestate-etl-notifications",
+        "Subject": "✅ ETL 파이프라인 성공",
+        "Message.$": "States.Format('ETL 파이프라인이 성공적으로 완료되었습니다.\n\n📊 실행 정보:\n- 시작 시간: {}\n- 병렬 크롤링: 5개 태스크\n- 처리 구역: 서울 25개 구\n\n✅ 완료 단계:\n1. 크롤링 (5개 병렬)\n2. 전처리 & S3 저장\n3. DB Import (PostgreSQL, ES, Neo4j)\n4. 모델 적용 (가격분류, 신뢰도)', $$.Execution.StartTime)"
+      },
+      "End": true
+    },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:ap-northeast-2:940075378738:realestate-etl-notifications",
+        "Subject": "❌ ETL 파이프라인 실패",
+        "Message.$": "States.Format('ETL 파이프라인이 실패했습니다.\n\n❌ 오류 정보:\n{}\n\n🔍 CloudWatch 로그를 확인하세요.', $.error)"
+      },
+      "End": true
+    }
+  }
 }
 ```
 
-### 문제 4: Secrets Manager 오류
+### Step Functions 시각화
 
-**증상**: `unable to retrieve secret from asm`
-
-**해결**: Environment variables로 직접 값 입력 (Task Definition 수정)
-
-### 문제 5: ECS 태스크가 이전 이미지 사용
-
-**증상**: Docker 이미지를 푸시했는데 변경사항이 반영 안 됨
-
-**해결**:
-1. Task Definition 새 revision 생성
-2. 새 revision 번호로 태스크 실행
-
-### 문제 6: Neo4j 연결 실패
-
-**증상**: `Couldn't connect to 13.124.11.170:7687` 또는 `Connection refused`
-
-**원인**:
-1. Neo4j가 설치되지 않음
-2. Neo4j가 127.0.0.1에서만 리스닝 (외부 접속 불가)
-3. 보안 그룹에서 7687 포트 차단
-
-**해결**:
-
-#### 방법 1: EC2 Instance Connect로 Neo4j 설치
-
-```bash
-# EC2 Console → Instances → Neo4j 인스턴스 → Connect → EC2 Instance Connect
-
-# Neo4j 설치
-wget -O - https://debian.neo4j.com/neotechnology.gpg.key | sudo apt-key add -
-echo 'deb https://debian.neo4j.com stable latest' | sudo tee /etc/apt/sources.list.d/neo4j.list
-sudo apt-get update
-sudo apt-get install -y neo4j
-
-# 초기 비밀번호 설정
-sudo neo4j-admin dbms set-initial-password Neo4j2024!Secure
-
-# 모든 IP에서 접속 허용
-echo "dbms.default_listen_address=0.0.0.0" | sudo tee -a /etc/neo4j/neo4j.conf
-
-# Neo4j 시작
-sudo systemctl enable neo4j
-sudo systemctl start neo4j
-
-# 확인 (*:7687이어야 함)
-sudo ss -tlnp | grep 7687
+```mermaid
+stateDiagram-v2
+    [*] --> ParallelCrawling
+    
+    state ParallelCrawling {
+        [*] --> CrawlGroup1
+        [*] --> CrawlGroup2
+        [*] --> CrawlGroup3
+        [*] --> CrawlGroup4
+        [*] --> CrawlGroup5
+        CrawlGroup1 --> [*]
+        CrawlGroup2 --> [*]
+        CrawlGroup3 --> [*]
+        CrawlGroup4 --> [*]
+        CrawlGroup5 --> [*]
+    }
+    
+    ParallelCrawling --> RunPreprocessing
+    ParallelCrawling --> NotifyFailure: Error
+    
+    RunPreprocessing --> RunDBImport
+    RunPreprocessing --> NotifyFailure: Error
+    
+    RunDBImport --> RunModelApplication
+    RunDBImport --> NotifyFailure: Error
+    
+    RunModelApplication --> NotifySuccess
+    RunModelApplication --> NotifyFailure: Error
+    
+    NotifySuccess --> [*]
+    NotifyFailure --> [*]
 ```
 
-#### 방법 2: 보안 그룹 확인
+### Phase 6: EventBridge 스케줄러 설정
 
 ```powershell
-# 7687 포트가 열려있는지 확인
-aws ec2 describe-security-groups --group-ids sg-0b2bdef4bce788976 --query "SecurityGroups[0].IpPermissions[?FromPort==`7687`]"
+# 매일 12:00 KST (03:00 UTC)에 실행
+.\setup-eventbridge.ps1
 ```
 
-### 문제 7: KAKAO_API_KEY 경고
+EventBridge 규칙 설정:
 
-**증상**: `⚠ 참고: KAKAO_API_KEY가 설정되지 않았습니다`
+```json
+{
+  "Name": "realestate-daily-schedule",
+  "ScheduleExpression": "cron(0 3 * * ? *)",
+  "Description": "매일 12:00 KST에 ETL 파이프라인 실행",
+  "Target": {
+    "Arn": "arn:aws:states:ap-northeast-2:940075378738:stateMachine:realestate-etl-pipeline",
+    "RoleArn": "arn:aws:iam::940075378738:role/EventBridgeStepFunctionsRole"
+  }
+}
+```
 
-**해결**:
-1. Kakao Developers에서 API 키 발급
-2. Task Definition에 환경 변수 추가:
-   ```json
-   {"name": "KAKAO_API_KEY", "value": "your_kakao_api_key_here"}
-   ```
-3. Task Definition 새 revision 생성
+### Phase 7: SNS 알림 설정
 
-### 문제 8: global_land_mask 모듈 없음
+```powershell
+# SNS 토픽 생성
+aws sns create-topic --name realestate-etl-notifications
 
-**증상**: `ModuleNotFoundError: No module named 'global_land_mask'`
-
-**해결**:
-1. `infra/docker/requirements.txt`에 `global-land-mask` 추가
-2. Docker 이미지 재빌드 및 푸시
+# 이메일 구독 추가
+aws sns subscribe \
+    --topic-arn arn:aws:sns:ap-northeast-2:940075378738:realestate-etl-notifications \
+    --protocol email \
+    --notification-endpoint your-email@example.com
+```
 
 ---
 
-## 유용한 명령어
+## 파이프라인 실행
 
-### 리소스 확인
+### 수동 실행
 
 ```powershell
-# VPC 확인
-aws ec2 describe-vpcs --region ap-northeast-2
+# 1. ECS 태스크 직접 실행
+.\run-full-aws-pipeline.ps1
 
-# RDS 상태
-aws rds describe-db-instances --db-instance-identifier realestate-postgres --region ap-northeast-2
+# 또는 AWS CLI로 실행
+aws ecs run-task \
+    --cluster realestate-cluster \
+    --task-definition realestate-etl-task \
+    --launch-type FARGATE \
+    --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxx],securityGroups=[sg-xxxxx],assignPublicIp=ENABLED}"
+```
 
-# EC2 인스턴스
-aws ec2 describe-instances --filters "Name=tag:Name,Values=realestate-*" --region ap-northeast-2
+### Step Functions 실행
 
-# ECS 태스크 목록
-aws ecs list-tasks --cluster realestate-etl-cluster --region ap-northeast-2
-
-# Secrets 목록
-aws secretsmanager list-secrets --query "SecretList[?contains(Name, 'realestate')]" --region ap-northeast-2
+```powershell
+# Step Functions 상태 머신 실행
+aws stepfunctions start-execution \
+    --state-machine-arn arn:aws:states:ap-northeast-2:940075378738:stateMachine:realestate-etl-pipeline \
+    --name "manual-execution-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 ```
 
 ### 로그 확인
 
 ```powershell
-# 최근 로그 스트림
-aws logs describe-log-streams --log-group-name /ecs/realestate-etl --order-by LastEventTime --descending --max-items 5 --region ap-northeast-2
+# CloudWatch 로그 실시간 확인
+aws logs tail /ecs/realestate-etl-task --follow
 
-# 실시간 로그
-aws logs tail /ecs/realestate-etl --follow --region ap-northeast-2
+# 최근 로그 조회
+aws logs get-log-events \
+    --log-group-name /ecs/realestate-etl-task \
+    --log-stream-name "ecs/realestate-scripts/xxxxxxxx"
 ```
 
-### EventBridge 관리
+---
+
+## 모니터링 및 알림
+
+### CloudWatch 대시보드
+
+주요 모니터링 지표:
+
+| 지표 | 설명 | 알림 조건 |
+|-----|------|----------|
+| ECS Task Status | 태스크 실행 상태 | 실패 시 알림 |
+| Task Duration | 파이프라인 소요 시간 | 2시간 초과 시 알림 |
+| Memory Utilization | 메모리 사용률 | 90% 초과 시 알림 |
+| CPU Utilization | CPU 사용률 | 90% 초과 시 알림 |
+| S3 Objects Count | 저장된 데이터 수 | 일일 증가 없을 시 알림 |
+
+### SNS 알림 설정
+
+```mermaid
+flowchart LR
+    SF["Step Functions"]
+    SNS["SNS Topic"]
+    EMAIL["📧 Email"]
+    
+    SF -->|성공/실패| SNS
+    SNS --> EMAIL
+```
+
+---
+
+## 트러블슈팅
+
+### 일반적인 오류 및 해결 방법
+
+#### 1. Playwright 브라우저 없음
+
+```
+Error: BrowserType.launch: Executable doesn't exist at /root/.cache/ms-playwright/chromium_headless_shell-1200/...
+```
+
+**해결:** Dockerfile에 Playwright 설치 추가
+
+```dockerfile
+# Install Playwright browsers
+RUN playwright install --with-deps chromium
+```
+
+#### 2. 데이터베이스 연결 실패
+
+```
+Connection refused (os error 111)
+```
+
+**확인 사항:**
+- 보안 그룹 인바운드 규칙 확인
+- VPC/서브넷 네트워크 설정 확인
+- Secrets Manager 자격 증명 확인
 
 ```powershell
-# 규칙 비활성화
-aws events disable-rule --name realestate-etl-daily --region ap-northeast-2
-
-# 규칙 활성화
-aws events enable-rule --name realestate-etl-daily --region ap-northeast-2
+# 보안 그룹 규칙 확인
+aws ec2 describe-security-groups --group-ids sg-xxxxx
 ```
 
----
+#### 3. ECS 태스크 메모리 부족
 
-## 비용 최적화
+```
+OutOfMemoryError: Container killed due to memory usage
+```
 
-### 월간 예상 비용
+**해결:** 태스크 정의에서 메모리 증가
 
-| 리소스 | 사양 | 월 비용 (USD) |
-|--------|------|---------------|
-| RDS PostgreSQL | db.t3.micro, 20GB | ~$15 |
-| EC2 Neo4j | t3.micro | ~$7.5 |
-| EC2 Elasticsearch | t3.small | ~$15 |
-| ECS Fargate | 4vCPU, 16GB, 1일 30분 | ~$7 |
-| S3 | 10GB | ~$0.25 |
-| CloudWatch Logs | 5GB/월 | ~$2.5 |
-| **총계** | | **~$47/월** |
+```json
+{
+  "memory": "4096",
+  "cpu": "2048"
+}
+```
 
-### 비용 절감 팁
+#### 4. S3 권한 오류
 
-1. **사용하지 않을 때 RDS 중지**
-   ```powershell
-   aws rds stop-db-instance --db-instance-identifier realestate-postgres
-   ```
+```
+AccessDenied: Access Denied
+```
 
-2. **EC2 인스턴스 중지**
-   ```powershell
-   aws ec2 stop-instances --instance-ids i-xxxxxxxxx
-   ```
-
-3. **EventBridge 규칙 비활성화**
-   ```powershell
-   aws events disable-rule --name realestate-etl-daily --region ap-northeast-2
-   ```
-
----
-
-## 완전 삭제 가이드
-
-리소스를 완전히 삭제하려면 **역순**으로 삭제:
+**해결:** ECS Task Role에 S3 권한 추가
 
 ```powershell
-# 1. EventBridge Rule 삭제
-aws events remove-targets --rule realestate-etl-daily --ids 1 --region ap-northeast-2
-aws events delete-rule --name realestate-etl-daily --region ap-northeast-2
-
-# 2. ECS 태스크 정의 삭제 (Console에서)
-
-# 3. ECS 클러스터 삭제
-aws ecs delete-cluster --cluster realestate-etl-cluster --region ap-northeast-2
-
-# 4. ECR 이미지 삭제
-aws ecr delete-repository --repository-name realestate-scripts --force --region ap-northeast-2
-
-# 5. RDS 삭제
-aws rds delete-db-instance --db-instance-identifier realestate-postgres --skip-final-snapshot --region ap-northeast-2
-
-# 6. EC2 인스턴스 삭제
-aws ec2 terminate-instances --instance-ids i-xxxxxxxxx i-yyyyyyyyy --region ap-northeast-2
-
-# 7. Secrets 삭제
-aws secretsmanager delete-secret --secret-id realestate/postgres --force-delete-without-recovery --region ap-northeast-2
-aws secretsmanager delete-secret --secret-id realestate/neo4j --force-delete-without-recovery --region ap-northeast-2
-aws secretsmanager delete-secret --secret-id realestate/elasticsearch --force-delete-without-recovery --region ap-northeast-2
-
-# 8. S3 버킷 삭제 (비우기 후)
-aws s3 rm s3://realestate-etl-data --recursive
-aws s3 rb s3://realestate-etl-data
-
-# 9. VPC 및 네트워크 리소스 삭제 (Console에서 권장)
+.\fix-s3-permissions.ps1
 ```
 
----
+#### 5. 크롤링 타임아웃
 
-## 참고 자료
+```
+TimeoutError: page.goto: Timeout 30000ms exceeded
+```
 
-- [AWS ECS Fargate 문서](https://docs.aws.amazon.com/ecs/latest/developerguide/AWS_Fargate.html)
-- [AWS EventBridge 문서](https://docs.aws.amazon.com/eventbridge/latest/userguide/what-is-amazon-eventbridge.html)
-- [Docker 문서](https://docs.docker.com/)
-- [PostgreSQL 문서](https://www.postgresql.org/docs/)
-- [Neo4j 문서](https://neo4j.com/docs/)
-- [Elasticsearch 문서](https://www.elastic.co/guide/index.html)
-
----
-
-## 작성 정보
-
-- **작성일**: 2026-01-03
-- **버전**: 1.0
-- **테스트 환경**: Windows 11, PowerShell 7.x, AWS CLI 2.x
-- **AWS 리전**: ap-northeast-2 (서울)
+**해결:**
+- 네트워크 설정에서 `assignPublicIp: ENABLED` 확인
+- NAT Gateway 또는 VPC Endpoint 설정 확인
+- 타임아웃 값 증가
 
 ---
 
-**🎉 축하합니다! AWS ETL 파이프라인 구축이 완료되었습니다!**
+## 비용 예측
+
+### 월간 예상 비용 (서울 리전 기준)
+
+| 서비스 | 사용량 | 예상 비용 (USD) |
+|-------|-------|----------------|
+| ECS Fargate | 1시간/일 × 30일 | ~$15 |
+| RDS PostgreSQL (db.t3.micro) | 730시간 | ~$15 |
+| EC2 Neo4j (t3.micro) | 730시간 | ~$10 |
+| S3 | 10GB 스토리지 | ~$0.25 |
+| Secrets Manager | 2개 시크릿 | ~$0.80 |
+| CloudWatch Logs | 5GB 로그 | ~$2.50 |
+| Step Functions | 30 실행/월 | ~$0.75 |
+| SNS | 30 알림/월 | ~$0.01 |
+| **합계** | | **~$45/월** |
+
+---
