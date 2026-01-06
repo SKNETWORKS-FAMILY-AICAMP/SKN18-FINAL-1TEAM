@@ -289,8 +289,8 @@ export default function LandDetailPage() {
             <div className="mt-8">
                 <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
                     <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-                        <h3 className="font-bold text-base">현재 매물과 비슷한 추천 매물</h3>
-                        <p className="text-xs text-blue-100 mt-1">
+                        <h3 className="font-bold text-base" style={{ color: '#ffffff' }}>현재 매물과 비슷한 추천 매물</h3>
+                        <p className="text-xs mt-1" style={{ color: '#ffffff' }}>
                             같은 행정동 · 골드 등급 중개사 · 같은 거래유형 · 유사한 가격대 (±30%)
                         </p>
                     </div>

@@ -4,7 +4,7 @@
  * 사용자 선호도 기반 매물 필터링 컴포넌트
  * 
  * 주요 기능:
- * - 버튼 형태의 필터 옵션 선택 (대중교통, 주변 공원, 대학/직장 거리, 편의시설, 치안/안전, 허위매물, 초기화)
+ * - 버튼 형태의 필터 옵션 선택 (치안/안전, 교통, 편의시설, 문화, 반려동물, 초기화)
  * - 선택된 필터 조건 표시
  */
 
@@ -154,12 +154,11 @@ interface PreferenceFilterProps {
 }
 
 const FILTER_OPTIONS: FilterOption[] = [
-    { id: 'transport', label: '대중교통', icon: '🚇' },
-    { id: 'park', label: '주변 공원', icon: '🌳' },
-    { id: 'distance', label: '대학가', icon: '🏢' },
-    { id: 'facilities', label: '편의시설', icon: '🏪' },
-    { id: 'safety', label: '치안/안전', icon: '⭐' },
-    { id: 'fake', label: '허위매물', icon: '🚫' },
+    { id: 'safety', label: '안전', icon: '🛡️' },
+    { id: 'traffic', label: '교통', icon: '🚇' },
+    { id: 'convenience', label: '편의시설', icon: '🏪' },
+    { id: 'culture', label: '문화', icon: '🎭' },
+    { id: 'pet', label: '반려동물', icon: '🐶' },
 ];
 
 export default function PreferenceFilter({

@@ -19,8 +19,29 @@ interface ChatSession {
   updatedAt: Date
 }
 
+interface FilterInfo {
+  summary: string
+  details: {
+    location?: string
+    facilities?: string[]
+    deal_type?: string
+    building_type?: string
+    max_deposit?: string
+    max_rent?: string
+    style?: string[]
+  }
+  search_strategy?: string
+}
+
+interface ChatbotRecommendData {
+  landIds: number[]
+  filterInfo: FilterInfo | null
+  properties: any[]  // graph_results from backend
+}
+
 interface ChatbotProps {
   onRecommendLands?: (landIds: number[]) => void
+  onChatbotRecommend?: (data: ChatbotRecommendData) => void
 }
 
 // 순위별 색상 정의
@@ -107,15 +128,16 @@ const parseRankedContent = (content: string): { rank: number | null; content: st
   return parts;
 };
 
-export default function Chatbot({ onRecommendLands }: ChatbotProps = {}) {
+export default function Chatbot({ onRecommendLands, onChatbotRecommend }: ChatbotProps = {}) {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showHistoryModal, setShowHistoryModal] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-
+  const [latestFilterInfo, setLatestFilterInfo] = useState<FilterInfo | null>(null)
+  const [latestProperties, setLatestProperties] = useState<any[]>([])
+  // const messagesEndRef = useRef<HTMLDivElement>(null) // 자동 스크롤 제거됨
   // 초기 마운트 시 저장된 세션 복원
   useEffect(() => {
     const savedSessions = localStorage.getItem('chatSessions')
@@ -159,11 +181,6 @@ export default function Chatbot({ onRecommendLands }: ChatbotProps = {}) {
       localStorage.setItem('currentSessionId', currentSessionId)
     }
   }, [currentSessionId])
-
-  // 메시지 변경 시 자동 스크롤
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
 
   const formatTime = (date: Date) => {
     const hours = date.getHours().toString().padStart(2, '0')
@@ -232,7 +249,17 @@ export default function Chatbot({ onRecommendLands }: ChatbotProps = {}) {
     setIsLoading(true)
 
     try {
-      const answer = await sendChatQuestion(userMessage.content, sessionId)
+      // 직접 fetch로 filter_info와 graph_results 받아오기
+      const response = await fetch('http://localhost:8001/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: userMessage.content,
+          session_id: sessionId
+        }),
+      });
+      const data = await response.json();
+      const answer = data.answer || '응답을 받을 수 없습니다.';
 
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -243,15 +270,28 @@ export default function Chatbot({ onRecommendLands }: ChatbotProps = {}) {
 
       setMessages(prev => [...prev, aiMessage])
 
-      // AI 응답에서 /landDetail/{id} 형태의 링크를 찾아 매물 ID 추천
-      if (onRecommendLands) {
-        const landIds = [...answer.matchAll(/\/landDetail\/(\d+)/g)]
-          .map(match => Number(match[1]))
-          .filter(Boolean)
+      // 필터 정보와 매물 데이터 저장
+      if (data.filter_info) {
+        setLatestFilterInfo(data.filter_info);
+      }
 
-        if (landIds.length > 0) {
-          onRecommendLands(landIds)
-        }
+      // AI 응답에서 /landDetail/{id} 형태의 링크를 찾아 매물 ID 추출
+      const landIds = [...answer.matchAll(/\/landDetail\/(\d+)/g)]
+        .map(match => Number(match[1]))
+        .filter(Boolean);
+
+      // 새로운 콜백으로 전달 (우선)
+      if (onChatbotRecommend && (landIds.length > 0 || data.filter_info)) {
+        onChatbotRecommend({
+          landIds,
+          filterInfo: data.filter_info || null,
+          properties: data.graph_results || []  // 백엔드의 graph_results 전달
+        });
+        setLatestProperties(data.graph_results || []);
+      }
+      // 기존 콜백 호환성 유지
+      else if (onRecommendLands && landIds.length > 0) {
+        onRecommendLands(landIds);
       }
     } catch (error) {
       setMessages(prev => [
@@ -598,11 +638,11 @@ export default function Chatbot({ onRecommendLands }: ChatbotProps = {}) {
                   {message.type === 'user' ? (
                     /* 사용자 메시지 */
                     <div className="flex justify-end">
-                      <div className="max-w-[75%] p-4 rounded-lg bg-[#16375B] text-white">
+                      <div className="max-w-[75%] p-4 rounded-lg bg-sky-100 text-gray-900">
                         <p className="text-sm whitespace-pre-wrap break-words">
                           {message.content}
                         </p>
-                        <p className="text-xs mt-2 text-gray-300">
+                        <p className="text-xs mt-2 text-gray-500">
                           {formatTime(message.timestamp)}
                         </p>
                       </div>
@@ -623,7 +663,7 @@ export default function Chatbot({ onRecommendLands }: ChatbotProps = {}) {
                                 <div className={`w-[85%] p-4 rounded-lg ${colors.bg} ${colors.border}`}>
                                   {part.rank && (
                                     <div className="flex items-center gap-2 mb-2">
-                                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${colors.badge}`}>
+                                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${colors.badge}`} style={{ color: '#ffffff' }}>
                                         {part.rank === 1 && '🥇 '}
                                         {part.rank === 2 && '🥈 '}
                                         {part.rank === 3 && '🥉 '}
@@ -674,7 +714,7 @@ export default function Chatbot({ onRecommendLands }: ChatbotProps = {}) {
                             <div className="flex justify-start">
                               <div className="w-[85%] p-4 rounded-lg bg-purple-50 border-l-4 border-purple-400">
                                 <div className="flex items-center gap-2 mb-3">
-                                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-purple-400 text-white">
+                                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-purple-400 text-white" style={{ color: '#ffffff' }}>
                                     💡 추가질문
                                   </span>
                                 </div>
@@ -758,11 +798,10 @@ export default function Chatbot({ onRecommendLands }: ChatbotProps = {}) {
                 </div>
               ))}
 
+
               {isLoading && (
                 <p className="text-sm text-gray-400">AI가 답변을 생성 중입니다...</p>
               )}
-
-              <div ref={messagesEndRef} />
             </>
           )}
         </div>

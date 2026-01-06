@@ -103,6 +103,10 @@ class Land(models.Model):
     listing_info = models.JSONField(blank=True, null=True)
     additional_options = models.TextField(blank=True, null=True)
     description = models.TextField(blank=True, null=True)
+    
+    # 스타일태그 및 검색텍스트
+    style_tags = models.TextField(blank=True, null=True, help_text='스타일 태그 (쉼표 구분)')
+    search_text = models.TextField(blank=True, null=True, help_text='검색용 통합 텍스트')
     # agent_info 제거 - landbroker FK로 대체 (데이터 정규화)
     created_at = models.DateTimeField(blank=True, null=True)
     updated_at = models.DateTimeField(blank=True, null=True)
@@ -147,26 +151,39 @@ class LandImage(models.Model):
 
 
 class PriceClassificationResult(models.Model):
-    """가격 분류 결과 모델"""
+    """가격 분류 결과 모델 (간소화 + 영어 컬럼명 + 외래키)"""
     id = models.AutoField(primary_key=True)
-    land_num = models.CharField(max_length=20, db_column='매물번호', unique=True)
-    land_url = models.TextField(db_column='매물_url', blank=True, null=True)
+    
+    # Land 테이블과 외래키 연결
+    land = models.ForeignKey(
+        Land,
+        on_delete=models.CASCADE,
+        db_column='land_num',
+        to_field='land_num',
+        related_name='price_predictions',
+        help_text='매물 (land_num으로 연결)'
+    )
     
     # 예측 결과
-    prediction_class = models.IntegerField(db_column='예측_클래스', help_text='예측 클래스 (0: 저렴, 1: 적정, 2: 비쌈)')
-    prediction_label = models.CharField(max_length=50, db_column='예측_레이블', help_text='예측 레이블 (영문)')
-    prediction_label_korean = models.CharField(max_length=50, db_column='예측_레이블_한글', help_text='예측 레이블 (한글)')
+    predicted_class = models.IntegerField(db_column='predicted_class', help_text='예측 클래스 (0: 저렴, 1: 적정, 2: 비쌈)')
+    predicted_label = models.CharField(max_length=20, db_column='predicted_label', help_text='예측 레이블 (영문)')
+    predicted_label_kr = models.CharField(max_length=20, db_column='predicted_label_kr', help_text='예측 레이블 (한글)')
     
     # 확률
-    probability_underpriced = models.FloatField(db_column='저렴_확률', help_text='저렴 확률')
-    probability_fair = models.FloatField(db_column='적정_확률', help_text='적정 확률')
-    probability_overpriced = models.FloatField(db_column='비쌈_확률', help_text='비쌈 확률')
+    underpriced_prob = models.FloatField(db_column='underpriced_prob', help_text='저렴 확률')
+    fair_prob = models.FloatField(db_column='fair_prob', help_text='적정 확률')
+    overpriced_prob = models.FloatField(db_column='overpriced_prob', help_text='비쌈 확률')
     
-    prediction_datetime = models.DateTimeField(db_column='예측_일시', blank=True, null=True)
+    predicted_at = models.DateTimeField(db_column='predicted_at', auto_now=True, help_text='예측 일시')
     
     class Meta:
         managed = False
         db_table = 'price_classification_results'
     
     def __str__(self):
-        return f"{self.land_num} - {self.prediction_label_korean}"
+        return f"{self.land.land_num} - {self.predicted_label_kr}"
+    
+    @property
+    def land_num(self):
+        """하위 호환성을 위한 land_num 속성"""
+        return self.land.land_num if self.land else None

@@ -813,7 +813,7 @@ def rule_based_search(state: RAGState) -> Dict:
     """
     규칙 기반 검색 (LLM 0회 호출)
     
-    1. 질문 분석 (위치 + 시설 타입 추출)
+    1. hard_filters가 있으면 사용, 없으면 질문 분석
     2. 동적 Cypher 쿼리 생성
     3. Neo4j 쿼리 실행
     4. 결과 정제 및 반환
@@ -825,14 +825,42 @@ def rule_based_search(state: RAGState) -> Dict:
     from common.redis_cache import get_location_cache, save_location_cache
     
     question = state["question"]
+    hard_filters = state.get("hard_filters", {})
+    
     print(f"\n{'='*60}")
     print(f"[Neo4j] 🚀 검색 시작: {question}")
+    print(f"[Neo4j] 📋 하드 필터: {hard_filters}")
     print(f"{'='*60}\n")
     
-    # 1. 질문 분석
-    analysis = analyze_question(question)
-    location = analysis['location']
-    facilities = analysis['facilities']
+    # 1. hard_filters가 있으면 사용, 없으면 질문 분석
+    if hard_filters and (hard_filters.get("location") or hard_filters.get("facilities")):
+        # 하드 필터에서 위치와 시설 추출
+        location = hard_filters.get("location", "")
+        facilities = hard_filters.get("facilities", [])
+        location_type = ""  # 하드 필터에서는 location_type 추정 필요
+        
+        # location_type 추정
+        if location:
+            if any(uni in location for uni in ["대학", "대"]):
+                location_type = "university"
+            elif "역" in location or location in ["홍대", "강남", "신촌", "역삼", "선릉"]:
+                location_type = "subway"
+            else:
+                location_type = "region"
+        
+        analysis = {
+            'location': location,
+            'location_type': location_type,
+            'facilities': facilities,
+            'facilities_dict': {f: True for f in facilities},
+            'search_type': 'multi' if len(facilities) >= 2 else ('single' if facilities else 'default')
+        }
+        print(f"[Neo4j] 📍 하드필터 기반: location={location}, facilities={facilities}")
+    else:
+        # 기존 질문 분석 사용
+        analysis = analyze_question(question)
+        location = analysis['location']
+        facilities = analysis['facilities']
     
     # 검색 진행 상황 메시지 생성 (UI 표시용)
     search_steps = generate_search_steps(location, facilities)

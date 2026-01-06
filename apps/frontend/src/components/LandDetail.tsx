@@ -11,7 +11,10 @@ import Image from 'next/image';
 import { Land } from '../types/land';
 import { fetchLandById } from '../api/landApi';
 import { recordListingView } from '../api/historyApi';
+import { addWishlist, removeWishlist, fetchWishlist } from '../api/wishlistApi';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+import axiosInstance from '@/lib/axios';
 
 interface LandDetailProps {
   landId: string;
@@ -21,14 +24,19 @@ type TempId = 'safety' | 'convenience' | 'pet' | 'traffic' | 'culture';
 
 export default function LandDetail({ landId }: LandDetailProps) {
   const router = useRouter();
+  const { status } = useSession();
   const [land, setLand] = useState<Land | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [liked, setLiked] = useState(false);
   const [showPriceTooltip, setShowPriceTooltip] = useState(false);
+  const [showBrokerTooltip, setShowBrokerTooltip] = useState(false);
+  const [showTopBrokerTooltip, setShowTopBrokerTooltip] = useState(false);
+  const [showStyleTooltip, setShowStyleTooltip] = useState(false);
   const [maxScrollDepth, setMaxScrollDepth] = useState(0);
   const maxScrollDepthRef = useRef(0);
+  const [userPriorities, setUserPriorities] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const loadLand = async () => {
@@ -46,6 +54,38 @@ export default function LandDetail({ landId }: LandDetailProps) {
 
     if (landId) loadLand();
   }, [landId]);
+
+  // 찜 상태 확인 (로그인한 경우만)
+  useEffect(() => {
+    const checkWishlistStatus = async () => {
+      if (status !== 'authenticated' || !landId) return;
+
+      try {
+        const wishlist = await fetchWishlist();
+        const isInWishlist = wishlist.some(item => item.listing_id === landId);
+        setLiked(isInWishlist);
+      } catch (err) {
+        console.error('Failed to check wishlist status:', err);
+      }
+    };
+
+    checkWishlistStatus();
+  }, [status, landId]);
+
+  // 사용자 선호도 우선순위 가져오기 (로그인한 경우만)
+  useEffect(() => {
+    const fetchUserPriorities = async () => {
+      if (status !== 'authenticated') return;
+      try {
+        const response = await axiosInstance.get('/api/users/preference-survey/');
+        const priorities = response.data?.priorities || {};
+        setUserPriorities(priorities);
+      } catch (err) {
+        console.log('선호도 정보 없음 - 기본 순서 사용');
+      }
+    };
+    fetchUserPriorities();
+  }, [status]);
 
   // ✅ 온도 설명 토글 상태
   const [activeTempId, setActiveTempId] = useState<TempId | null>(null);
@@ -84,19 +124,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
     };
   }, [landId]); // maxScrollDepth 제거!
 
-  // 신뢰도 등급에 따른 아이콘 반환
-  const getTrustBadgeImage = (score: string | null | undefined) => {
-    switch (score) {
-      case 'A':
-        return '/assets/land_broker/gold.png';
-      case 'B':
-        return '/assets/land_broker/silver.png';
-      case 'C':
-        return '/assets/land_broker/bronze.png';
-      default:
-        return null;
-    }
-  };
+
 
   // 가격 분류 레이블 배지 색상
   const getPriceBadgeColor = (label: string | undefined) => {
@@ -121,6 +149,43 @@ export default function LandDetail({ landId }: LandDetailProps) {
     }
     return fee;
   };
+
+  // 사용자 우선순위가 있으면 정렬 적용 (훅은 조건부 return 전에 호출)
+  const priorityLabelToId: Record<string, TempId> = {
+    '안전': 'safety',
+    '교통': 'traffic',
+    '편의시설': 'convenience',
+    '문화': 'culture',
+    '반려동물': 'pet',
+  };
+
+  const sortedTempItems = useMemo(() => {
+    if (!land) return [];
+
+    const tempItems = [
+      { id: 'safety', label: '안전 온도', value: land.temperatures?.safety || 36.5, icon: '🛡️', desc: '치안 및 인프라' },
+      { id: 'traffic', label: '교통 온도', value: land.temperatures?.traffic || 36.5, icon: '🚇', desc: '대중교통 접근성' },
+      { id: 'convenience', label: '편의 온도', value: land.temperatures?.convenience || 36.5, icon: '🛒', desc: '생활 밀접 시설' },
+      { id: 'culture', label: '문화 온도', value: land.temperatures?.culture || 36.5, icon: '🏛️', desc: '문화 및 예술 시설' },
+      { id: 'pet', label: '반려동물 온도', value: land.temperatures?.pet || 36.5, icon: '🐾', desc: '반려견 산책 및 병원' },
+    ];
+
+    if (Object.keys(userPriorities).length === 0) {
+      return tempItems;
+    }
+
+    const idToPriority: Record<string, number> = {};
+    for (const [label, rank] of Object.entries(userPriorities)) {
+      const id = priorityLabelToId[label];
+      if (id) idToPriority[id] = rank;
+    }
+
+    return [...tempItems].sort((a, b) => {
+      const priorityA = idToPriority[a.id] ?? 99;
+      const priorityB = idToPriority[b.id] ?? 99;
+      return priorityA - priorityB;
+    });
+  }, [userPriorities, land]);
 
   if (loading) {
     return (
@@ -191,17 +256,11 @@ export default function LandDetail({ landId }: LandDetailProps) {
     setActiveTempId((prev) => (prev === id ? null : id));
   };
 
-  const tempItems = [
-    { id: 'safety', label: '안전 온도', value: land.temperatures?.safety || 36.5, icon: '🛡️', desc: '치안 및 인프라' },
-    { id: 'convenience', label: '편의 온도', value: land.temperatures?.convenience || 36.5, icon: '🛒', desc: '생활 밀접 시설' },
-    { id: 'pet', label: '반려동물 온도', value: land.temperatures?.pet || 36.5, icon: '🐾', desc: '반려견 산책 및 병원' },
-    { id: 'traffic', label: '교통 온도', value: land.temperatures?.traffic || 36.5, icon: '🚇', desc: '대중교통 접근성' },
-    { id: 'culture', label: '문화 온도', value: land.temperatures?.culture || 36.5, icon: '🏛️', desc: '문화 및 예술 시설' },
-  ];
+
 
   const activeTemp = activeTempId ? tempExplain[activeTempId] : null;
-  const activeTempItem = activeTempId ? tempItems.find((item) => item.id === activeTempId) : null;
-  const visibleTempItems = activeTempId ? tempItems.filter((item) => item.id !== activeTempId) : tempItems;
+  const activeTempItem = activeTempId ? sortedTempItems.find((item) => item.id === activeTempId) : null;
+  const visibleTempItems = activeTempId ? sortedTempItems.filter((item) => item.id !== activeTempId) : sortedTempItems;
 
   // 이미지가 없으면 기본 placeholder 사용
   const defaultPlaceholder = '/images/gozip_loading.png';
@@ -217,9 +276,30 @@ export default function LandDetail({ landId }: LandDetailProps) {
     setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
   };
 
-  const handleLike = (e: React.MouseEvent) => {
+  const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    setLiked(!liked);
+
+    // 로그인 체크
+    if (status !== 'authenticated') {
+      alert('로그인이 필요한 기능입니다.');
+      router.push('/login');
+      return;
+    }
+
+    try {
+      if (liked) {
+        // 찜 해제
+        await removeWishlist(landId);
+        setLiked(false);
+      } else {
+        // 찜 추가
+        await addWishlist(landId);
+        setLiked(true);
+      }
+    } catch (err) {
+      console.error('Failed to update wishlist:', err);
+      alert('찜 처리 중 오류가 발생했습니다.');
+    }
   };
 
   // listing_info에서 카테고리별 데이터 추출 및 파싱
@@ -294,33 +374,108 @@ export default function LandDetail({ landId }: LandDetailProps) {
       {/* 헤더 섹션: 매물번호, 주소, 가격 */}
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-                clipRule="evenodd"
-              />
-            </svg>
+          <div className="relative flex-shrink-0">
+            {land.broker?.trust_score && (
+              <div
+                className="w-9 h-9 flex items-center justify-center cursor-pointer"
+                onMouseEnter={() => setShowTopBrokerTooltip(true)}
+                onMouseLeave={() => setShowTopBrokerTooltip(false)}
+              >
+                <Image
+                  src={
+                    land.broker.trust_score === 'A' ? '/assets/land_broker/gold.png' :
+                      land.broker.trust_score === 'B' ? '/assets/land_broker/silver.png' :
+                        '/assets/land_broker/bronze.png'
+                  }
+                  alt={`${land.broker.trust_score}등급`}
+                  width={36}
+                  height={36}
+                  className="object-contain"
+                />
+              </div>
+            )}
+            {!land.broker?.trust_score && (
+              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+            )}
           </div>
           <div className="flex-1">
-            <p className="text-sm text-gray-500 mb-1">매물번호 {land.land_num}</p>
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-sm text-gray-500">매물번호 {land.land_num}</p>
+              {land.broker?.trust_score && (
+                <div className="relative">
+                  <button
+                    className="w-4 h-4 rounded-full bg-gray-200 text-gray-600 text-[10px] font-bold hover:bg-gray-300 transition-colors flex items-center justify-center"
+                    onMouseEnter={() => setShowTopBrokerTooltip(true)}
+                    onMouseLeave={() => setShowTopBrokerTooltip(false)}
+                  >
+                    ?
+                  </button>
+                  {showTopBrokerTooltip && (
+                    <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-lg shadow-xl border border-gray-200 p-4 z-50">
+                      <p className="text-sm font-bold text-blue-600 mb-2">
+                        중개사 신뢰도 평가 모델
+                      </p>
+                      <p className="text-xs text-slate-600 leading-relaxed mb-3">
+                        AI 기반 평가 모델을 통해 중개사의 실적, 인력, 거래 이력, 구조 등을 종합적으로 분석하여 신뢰도를 A, B, C 등급으로 평가합니다.
+                      </p>
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <p className="text-xs text-slate-600 mb-2">
+                          <strong>현재 중개사 신뢰도:</strong>
+                        </p>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-bold ${land.broker.trust_score === 'A' ? 'bg-yellow-500 text-white' :
+                            land.broker.trust_score === 'B' ? 'bg-gray-400 text-white' :
+                              'bg-amber-700 text-white'
+                            }`}>
+                            {land.broker.trust_score === 'A' ? '골드 (A등급)' :
+                              land.broker.trust_score === 'B' ? '실버 (B등급)' :
+                                '브론즈 (C등급)'}
+                          </span>
+                        </div>
+                        {land.broker.trust_score === 'B' && (
+                          <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                            <p className="text-xs text-yellow-800">
+                              ⚠️ <strong>주의:</strong> 실버 등급 중개사입니다. 매물 정보를 꼼꼼히 확인하시고, 계약 전 충분한 상담을 권장합니다.
+                            </p>
+                          </div>
+                        )}
+                        {land.broker.trust_score === 'C' && (
+                          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                            <p className="text-xs text-red-800">
+                              🚨 <strong>경고:</strong> 브론즈 등급 중개사입니다. 매물 정보의 정확성을 반드시 재확인하시고, 계약 시 각별히 주의하시기 바랍니다.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <h1 className="text-xl font-bold text-slate-800 mb-2">{land.address || '주소 정보 없음'}</h1>
 
             <div className="flex items-center gap-3 mb-3">
               <span className="text-2xl font-bold text-blue-600">{land.price || '-'}</span>
 
-              {land.price_prediction?.prediction_label_korean && (
+              {land.price_prediction?.predicted_label_kr && (
                 <div className="relative inline-flex items-center gap-2">
                   <span
-                    className={`px-3 py-1 rounded-lg text-sm font-bold ${land.price_prediction.prediction_label_korean === '저렴'
+                    className={`px-3 py-1 rounded-lg text-sm font-bold ${land.price_prediction.predicted_label_kr === '저렴'
                       ? 'bg-green-500 text-white'
-                      : land.price_prediction.prediction_label_korean === '적정'
+                      : land.price_prediction.predicted_label_kr === '적정'
                         ? 'bg-blue-500 text-white'
                         : 'bg-red-500 text-white'
                       }`}
                   >
-                    {land.price_prediction.prediction_label_korean}
+                    {land.price_prediction.predicted_label_kr}
                   </span>
                   <button
                     className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-300 transition-colors"
@@ -334,8 +489,8 @@ export default function LandDetail({ landId }: LandDetailProps) {
                     <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-lg shadow-xl border border-gray-200 p-4 z-50">
                       <p className="text-sm text-slate-700">
                         해당 매물은 서울특별시 법정동 건물용도별 평당가로 분석했을 때{' '}
-                        <strong className={getPriceBadgeColor(land.price_prediction.prediction_label_korean)}>
-                          '{land.price_prediction.prediction_label_korean}'
+                        <strong className={getPriceBadgeColor(land.price_prediction.predicted_label_kr)}>
+                          '{land.price_prediction.predicted_label_kr}'
                         </strong>
                         에 해당합니다.
                       </p>
@@ -344,6 +499,37 @@ export default function LandDetail({ landId }: LandDetailProps) {
                 </div>
               )}
             </div>
+
+            {/* 스타일 태그 */}
+            {land.style_tags && land.style_tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 items-center">
+                {land.style_tags.map((tag, idx) => (
+                  <span
+                    key={idx}
+                    className="px-3 py-1.5 bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 rounded-full text-sm font-medium border border-indigo-100 hover:from-indigo-100 hover:to-purple-100 transition-all cursor-default"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+                <div className="relative inline-flex items-center">
+                  <button
+                    className="w-5 h-5 rounded-full bg-gray-200 text-gray-600 text-xs font-bold hover:bg-gray-300 transition-colors flex items-center justify-center"
+                    onMouseEnter={() => setShowStyleTooltip(true)}
+                    onMouseLeave={() => setShowStyleTooltip(false)}
+                  >
+                    ?
+                  </button>
+                  {showStyleTooltip && (
+                    <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 p-3 z-50">
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        <span className="font-bold text-indigo-600">AI 스타일 태그:</span><br />
+                        매물 설명과 특징을 AI가 분석하여 추출한 핵심 키워드입니다.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -393,9 +579,9 @@ export default function LandDetail({ landId }: LandDetailProps) {
             <h3 className="font-bold flex items-center gap-3">
               <span className="flex items-center gap-2">
                 <span className="text-xl">🌡️</span>
-                <span>부동산 온도</span>
+                <span style={{ color: '#ffffff' }}>부동산 온도</span>
               </span>
-              <span className="text-[11px] text-gray-300 font-normal text-left flex-1">
+              <span className="text-[11px] font-normal text-left flex-1" style={{ color: '#d1d5db' }}>
                 온도에 대해 궁금한점은 아이콘을 눌러보세요
               </span>
             </h3>
@@ -438,6 +624,9 @@ export default function LandDetail({ landId }: LandDetailProps) {
                                   ? 'text-orange-500'
                                   : 'text-blue-500'
                                 }`}
+                              style={{
+                                color: activeTempItem.value >= 39 ? '#ef4444' : activeTempItem.value >= 35 ? '#f97316' : '#3b82f6'
+                              }}
                             >
                               {activeTempItem.value.toFixed(1)}
                               <span className="text-base text-gray-400 ml-1">°C</span>
@@ -447,8 +636,8 @@ export default function LandDetail({ landId }: LandDetailProps) {
                             <div
                               className="h-full rounded-full transition-all duration-1000 ease-out relative bg-gradient-to-r from-blue-400 via-yellow-400 to-red-500"
                               style={{
-                                width: `${Math.min(100, Math.max(0, activeTempItem.value))}%`,
-                                backgroundSize: `${100 / Math.max(0.01, activeTempItem.value / 100)}% 100%`,
+                                width: `${Math.min(100, Math.max(0, ((activeTempItem.value - 13) / (60 - 13)) * 100))}%`,
+                                backgroundSize: '500px 100%',
                               }}
                             >
                               <div className="absolute top-0 right-0 w-8 h-full bg-white/20 skew-x-[-20deg] animate-pulse"></div>
@@ -527,10 +716,13 @@ export default function LandDetail({ landId }: LandDetailProps) {
 
                           <div>
                             <div className="flex items-center justify-between text-lg mb-2">
-                              <span className="font-semibold text-slate-700">{temp.label}</span>
+                              <span className="font-semibold text-slate-800">{temp.label}</span>
                               <span
                                 className={`font-black ${temp.value >= 39 ? 'text-red-500' : temp.value >= 35 ? 'text-orange-500' : 'text-blue-500'
                                   }`}
+                                style={{
+                                  color: temp.value >= 39 ? '#ef4444' : temp.value >= 35 ? '#f97316' : '#3b82f6'
+                                }}
                               >
                                 {temp.value.toFixed(1)}
                                 <span className="text-base text-gray-400 ml-1">°C</span>
@@ -540,8 +732,8 @@ export default function LandDetail({ landId }: LandDetailProps) {
                               <div
                                 className="h-full rounded-full transition-all duration-1000 ease-out relative bg-gradient-to-r from-blue-400 via-yellow-400 to-red-500"
                                 style={{
-                                  width: `${Math.min(100, Math.max(0, temp.value))}%`,
-                                  backgroundSize: `${100 / Math.max(0.01, temp.value / 100)}% 100%`,
+                                  width: `${Math.min(100, Math.max(0, ((temp.value - 13) / (60 - 13)) * 100))}%`,
+                                  backgroundSize: '500px 100%',
                                 }}
                               >
                                 <div className="absolute top-0 right-0 w-8 h-full bg-white/20 skew-x-[-20deg] animate-pulse"></div>
@@ -558,7 +750,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
               {activeTemp && (
                 <div className="pt-4 mt-auto">
                   <div className="flex items-center justify-between">
-                    {tempItems.map((temp) => {
+                    {sortedTempItems.map((temp) => {
                       const isActive = activeTempId === (temp.id as TempId);
 
                       return (
@@ -586,12 +778,41 @@ export default function LandDetail({ landId }: LandDetailProps) {
         </div>
       </div>
 
+      {/* 중개사 정보 */}
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
+          <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>중개사 정보</h3>
+        </div>
+        <div className="p-4">
+          <div className="flex items-start gap-4">
+            <div className="flex-1 space-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 w-24">중개사무소</span>
+                <span className="font-semibold text-slate-800">{land.broker?.office_name || '-'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 w-24">대표자</span>
+                <span className="font-semibold text-slate-800">{land.broker?.representative || '-'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 w-24">연락처</span>
+                <span className="font-semibold text-slate-800">{land.broker?.phone || '-'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 w-24">위치</span>
+                <span className="font-semibold text-slate-800">{land.broker?.address || '-'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* 2컬럼 레이아웃: 핵심정보 / 계약 및 매물정보 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 핵심정보 */}
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-col">
           <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-            <h3 className="font-bold text-sm">핵심정보</h3>
+            <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>핵심정보</h3>
           </div>
           <div className="p-4 flex-1">
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -650,7 +871,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
         {/* 계약 및 매물정보 */}
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm flex flex-col">
           <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-            <h3 className="font-bold text-sm">계약 및 매물정보</h3>
+            <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>계약 및 매물정보</h3>
           </div>
           <div className="p-4 flex-1">
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
@@ -696,7 +917,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
         additionalOptions.length > 0) && (
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
             <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-              <h3 className="font-bold text-sm">생활 및 옵션정보</h3>
+              <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>생활 및 옵션정보</h3>
             </div>
             <div className="p-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -815,7 +1036,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
       {/* 상세 설명 섹션 */}
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-          <h3 className="font-bold text-sm">상세 설명</h3>
+          <h3 className="font-bold text-sm" style={{ color: '#ffffff' }}>상세 설명</h3>
         </div>
         <div className="p-4">
           <p className="text-slate-700 whitespace-pre-line leading-relaxed text-sm">
@@ -824,56 +1045,7 @@ export default function LandDetail({ landId }: LandDetailProps) {
         </div>
       </div>
 
-      {/* 중개사 정보 */}
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="bg-slate-700 text-white px-4 py-2 rounded-t-2xl">
-          <h3 className="font-bold text-sm">중개사 정보</h3>
-        </div>
-        <div className="p-4">
-          <div className="flex items-start gap-4">
-            <div className="flex-1 space-y-2 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 w-24">중개사무소</span>
-                <span className="font-semibold text-slate-800">{land.broker?.office_name || '-'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 w-24">대표자</span>
-                <span className="font-semibold text-slate-800">{land.broker?.representative || '-'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 w-24">연락처</span>
-                <span className="font-semibold text-slate-800">{land.broker?.phone || '-'}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 w-24">중개사무소 주소</span>
-                <span className="font-semibold text-slate-800 text-xs">{land.broker?.address || '-'}</span>
-              </div>
 
-              {/* 신뢰도 등급 표시 + PNG 아이콘 */}
-              {land.broker?.trust_score && (
-                <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
-                  <span className="text-gray-500 w-24">신뢰도</span>
-                  {getTrustBadgeImage(land.broker.trust_score) && (
-                    <Image
-                      src={getTrustBadgeImage(land.broker.trust_score)!}
-                      alt={`${land.broker.trust_score}`}
-                      width={36}
-                      height={36}
-                      className="object-contain"
-                    />
-                  )}
-                  <span className={`px-3 py-1 rounded-full text-sm font-bold ${land.broker.trust_score === 'A' ? 'bg-yellow-500 text-white' :
-                    land.broker.trust_score === 'B' ? 'bg-gray-400 text-white' :
-                      'bg-amber-700 text-white'
-                    }`}>
-                    {land.broker.trust_score === 'A' ? '골드' : land.broker.trust_score === 'B' ? '실버' : '브론즈'}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

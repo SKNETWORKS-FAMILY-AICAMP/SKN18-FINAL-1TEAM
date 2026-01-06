@@ -124,10 +124,16 @@ class CultureScoreImporter:
             session.run("""
             MATCH ()-[r:HAS_TEMPERATURE]->(m:Metric {name: 'Culture'})
             WITH r, $avg as raw_avg
-            SET r.temperature = round(
+            WITH r, raw_avg,
                 CASE 
                     WHEN r.raw_score <= raw_avg THEN 13 + r.raw_score * (23.5 / raw_avg)
                     ELSE 36.5 + (r.raw_score - raw_avg) * (23.5 / (100.0 - raw_avg))
+                END as calc_temp
+            SET r.temperature = round(
+                CASE 
+                    WHEN calc_temp < 13 THEN 13.0
+                    WHEN calc_temp > 60 THEN 60.0
+                    ELSE calc_temp
                 END, 1)
             """, avg=global_avg)
             

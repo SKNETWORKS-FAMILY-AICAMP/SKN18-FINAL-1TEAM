@@ -12,6 +12,8 @@ Usage:
     docker compose --profile scripts run --rm scripts python 03_import/import_all.py --only neo4j
     docker compose --profile scripts run --rm scripts python 03_import/import_all.py --only postgres
     docker compose --profile scripts run --rm scripts python 03_import/import_all.py --only es
+    docker compose --profile scripts run --rm scripts python 03_import/import_all.py --only trust
+    docker compose --profile scripts run --rm scripts python 03_import/import_all.py --only price
 """
 import sys
 import os
@@ -67,7 +69,7 @@ def import_postgres():
 def import_elasticsearch():
     """Elasticsearch 데이터 Import (subprocess로 실행)"""
     print("\n" + "=" * 70)
-    print(" " * 20 + "� Elasticsearch Import 시작")
+    print(" " * 20 + "🔍 Elasticsearch Import 시작")
     print("=" * 70)
     
     es_script = IMPORT_DIR / "elasticsearch" / "es817_property_importer.py"
@@ -82,12 +84,48 @@ def import_elasticsearch():
     print("\n✅ Elasticsearch Import 완료!")
 
 
+def import_trust():
+    """중개사 신뢰도 등급 적용 (subprocess로 실행)"""
+    print("\n" + "=" * 70)
+    print(" " * 20 + "🏅 중개사 신뢰도 등급 적용 시작")
+    print("=" * 70)
+    
+    trust_script = IMPORT_DIR / "trust" / "import_trust_all.py"
+    result = subprocess.run(
+        [sys.executable, str(trust_script)],
+        cwd=str(IMPORT_DIR / "trust")
+    )
+    
+    if result.returncode != 0:
+        raise RuntimeError(f"중개사 신뢰도 등급 적용 실패 (exit code: {result.returncode})")
+    
+    print("\n✅ 중개사 신뢰도 등급 적용 완료!")
+
+
+def import_price_classification():
+    """실거래가 분류 모델 적용 (subprocess로 실행)"""
+    print("\n" + "=" * 70)
+    print(" " * 20 + "🤖 실거래가 분류 모델 적용 시작")
+    print("=" * 70)
+    
+    price_script = IMPORT_DIR / "price_model" / "apply_price_classification.py"
+    result = subprocess.run(
+        [sys.executable, str(price_script)],
+        cwd=str(IMPORT_DIR / "price_model")
+    )
+    
+    if result.returncode != 0:
+        raise RuntimeError(f"실거래가 분류 모델 적용 실패 (exit code: {result.returncode})")
+    
+    print("\n✅ 실거래가 분류 모델 적용 완료!")
+
+
 def main():
     parser = argparse.ArgumentParser(description="통합 데이터 Import 스크립트")
     parser.add_argument(
         "--only",
-        choices=["neo4j", "postgres", "es", "elasticsearch"],
-        help="특정 DB만 Import (생략 시 전체)"
+        choices=["neo4j", "postgres", "es", "elasticsearch", "trust", "price"],
+        help="특정 단계만 실행 (생략 시 전체)"
     )
     parser.add_argument(
         "--skip-health-check",
@@ -139,15 +177,21 @@ def main():
             import_postgres()
         elif args.only in ["es", "elasticsearch"]:
             import_elasticsearch()
+        elif args.only == "trust":
+            import_trust()
+        elif args.only == "price":
+            import_price_classification()
         else:
-            # 전체 Import (순서 중요: Neo4j → PostgreSQL → Elasticsearch)
+            # 전체 Import (순서: Neo4j → PostgreSQL → Elasticsearch → Trust → Price)
             import_neo4j()
             import_postgres()
             import_elasticsearch()
+            import_trust()
+            import_price_classification()
         
         elapsed = time.time() - start_time
         print("\n" + "=" * 70)
-        print(f"✅ 전체 Import 완료! (소요 시간: {elapsed:.1f}초)")
+        print(f"✅ 전체 파이프라인 완료! (소요 시간: {elapsed:.1f}초)")
         print("=" * 70)
         
     except Exception as e:

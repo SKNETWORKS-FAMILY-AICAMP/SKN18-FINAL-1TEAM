@@ -31,21 +31,24 @@ export interface Land {
         생활시설?: string[];
         보안시설?: string[];
         기타시설?: string[];
-        방거실형태?: string; 
+        방거실형태?: string;
     };
     jeonse_loan?: string;        // 전세자금대출
     move_in_report?: string;     // 전입신고 여부
     approval_date?: string;      // 사용승인일
     trade_info?: any;            // 거래 정보 JSON
 
+    // 스타일 태그
+    style_tags?: string[];
+
     // 가격 예측 정보
     price_prediction?: {
-        prediction_class: number;
-        prediction_label: string;
-        prediction_label_korean: string;
-        probability_underpriced: number;
-        probability_fair: number;
-        probability_overpriced: number;
+        predicted_class: number;
+        predicted_label: string;
+        predicted_label_kr: string;
+        underpriced_prob: number;
+        fair_prob: number;
+        overpriced_prob: number;
     };
 
     // 부동산 온도 데이터

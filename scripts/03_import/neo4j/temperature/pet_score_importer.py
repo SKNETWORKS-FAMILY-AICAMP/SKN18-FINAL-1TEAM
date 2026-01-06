@@ -38,7 +38,7 @@ class PetScoreImporter:
     def import_nodes(self):
         """반려동물 전용 시설(놀이터 등) 노드 생성"""
         print("Importing PetPlayground nodes...")
-        playground_csv = self.base_dir / "data" / "GraphDB_data" / "pet" / "반려동물 놀이터.csv"
+        playground_csv = self.base_dir / "data" / "GraphDB_data" / "animal" / "animal_places.csv"
         
         if not playground_csv.exists():
             print(f"File not found: {playground_csv}")
@@ -158,10 +158,16 @@ class PetScoreImporter:
             session.run("""
             MATCH ()-[r:HAS_TEMPERATURE]->(m:Metric {name: 'Pet'})
             WITH r, $avg as raw_avg
-            SET r.temperature = round(
+            WITH r, raw_avg,
                 CASE 
                     WHEN r.raw_score <= raw_avg THEN 13 + r.raw_score * (23.5 / raw_avg)
                     ELSE 36.5 + (r.raw_score - raw_avg) * (23.5 / (100.0 - raw_avg))
+                END as calc_temp
+            SET r.temperature = round(
+                CASE 
+                    WHEN calc_temp < 13 THEN 13.0
+                    WHEN calc_temp > 60 THEN 60.0
+                    ELSE calc_temp
                 END, 1)
             """, avg=global_avg)
         

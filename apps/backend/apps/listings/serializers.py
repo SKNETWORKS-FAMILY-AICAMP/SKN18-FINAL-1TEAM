@@ -30,16 +30,16 @@ class BrokerSerializer(serializers.ModelSerializer):
 
 
 class PriceClassificationSerializer(serializers.ModelSerializer):
-    """가격 분류 시리얼라이저"""
+    """가격 분류 시리얼라이저 (영어 필드명)"""
     class Meta:
         model = PriceClassificationResult
         fields = [
-            'prediction_class',
-            'prediction_label',
-            'prediction_label_korean',
-            'probability_underpriced',
-            'probability_fair',
-            'probability_overpriced'
+            'predicted_class',
+            'predicted_label',
+            'predicted_label_kr',
+            'underpriced_prob',
+            'fair_prob',
+            'overpriced_prob'
         ]
 
 
@@ -87,6 +87,9 @@ class LandSerializer(serializers.ModelSerializer):
     
     # listing_info (시설 정보)
     listing_info = serializers.JSONField(read_only=True)
+    
+    # 스타일 태그
+    style_tags = serializers.SerializerMethodField()
 
     class Meta:
         model = Land
@@ -122,7 +125,8 @@ class LandSerializer(serializers.ModelSerializer):
             'broker',
             'price_prediction',
             'temperatures',
-            'listing_info'
+            'listing_info',
+            'style_tags'
         ]
 
     def get_title(self, obj):
@@ -253,7 +257,7 @@ class LandSerializer(serializers.ModelSerializer):
         return '-'
     
     def get_price_prediction(self, obj):
-        """가격 분류 정보 조회 (캐싱 적용)"""
+        """가격 분류 정보 조회 (외래키 기반)"""
         # context에 캐시된 price_predictions 사용 (N+1 쿼리 방지)
         price_cache = self.context.get('price_predictions')
         
@@ -262,18 +266,19 @@ class LandSerializer(serializers.ModelSerializer):
             price_class = price_cache.get(obj.land_num)
             if price_class:
                 return {
-                    'prediction_class': price_class.prediction_class,
-                    'prediction_label': price_class.prediction_label,
-                    'prediction_label_korean': price_class.prediction_label_korean,
-                    'probability_underpriced': price_class.probability_underpriced,
-                    'probability_fair': price_class.probability_fair,
-                    'probability_overpriced': price_class.probability_overpriced
+                    'predicted_class': price_class.predicted_class,
+                    'predicted_label': price_class.predicted_label,
+                    'predicted_label_kr': price_class.predicted_label_kr,
+                    'underpriced_prob': price_class.underpriced_prob,
+                    'fair_prob': price_class.fair_prob,
+                    'overpriced_prob': price_class.overpriced_prob
                 }
             return None
         
-        # 캐시가 없으면 개별 쿼리 (폴백)
+        # 캐시가 없으면 외래키 역참조 사용 (폴백)
         try:
-            price_class = PriceClassificationResult.objects.filter(land_num=obj.land_num).first()
+            # land.price_predictions는 related_name으로 역참조 가능
+            price_class = obj.price_predictions.first()
             if price_class:
                 return PriceClassificationSerializer(price_class).data
         except Exception as e:
@@ -285,3 +290,9 @@ class LandSerializer(serializers.ModelSerializer):
         """Neo4j에서 부동산 온도 정보 조회"""
         return get_land_temperatures(obj.land_num)
     
+    def get_style_tags(self, obj):
+        """스타일 태그 반환 (쉼표 구분 문자열 → 리스트)"""
+        if obj.style_tags:
+            return [tag.strip() for tag in obj.style_tags.split(',') if tag.strip()]
+        return []
+
