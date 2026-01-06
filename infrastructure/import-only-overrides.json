@@ -1,0 +1,12 @@
+{
+  "containerOverrides": [
+    {
+      "name": "etl-container",
+      "environment": [
+        {"name": "SKIP_CRAWLING", "value": "true"},
+        {"name": "SKIP_PREPROCESSING", "value": "true"},
+        {"name": "DOWNLOAD_FROM_S3", "value": "true"}
+      ]
+    }
+  ]
+}
