@@ -24,6 +24,214 @@
 ```mermaid
 flowchart TB
     subgraph Scheduling["⏰ 스케줄링 계층"]
+        EB[("EventBridge<br/>Scheduler")]
+    end
+
+    subgraph Orchestration["🎭 오케스트레이션 계층"]
+        SF["Step Functions<br/>State Machine"]
+    end
+
+    subgraph ServerlessContainer["🧩 서버리스(컨테이너) 계층"]
+        subgraph Parallel["⚙️ 병렬 처리 - 5개 ECS Fargate Task"]
+            direction LR
+            subgraph Task1["Task 1: 강남권"]
+                direction TB
+                T1C["크롤링"] --> T1P["전처리"] --> T1S["S3 업로드"]
+            end
+            subgraph Task2["Task 2: 중구권"]
+                direction TB
+                T2C["크롤링"] --> T2P["전처리"] --> T2S["S3 업로드"]
+            end
+            subgraph Task3["Task 3: 성북권"]
+                direction TB
+                T3C["크롤링"] --> T3P["전처리"] --> T3S["S3 업로드"]
+            end
+            subgraph Task4["Task 4: 마포권"]
+                direction TB
+                T4C["크롤링"] --> T4P["전처리"] --> T4S["S3 업로드"]
+            end
+            subgraph Task5["Task 5: 금천권"]
+                direction TB
+                T5C["크롤링"] --> T5P["전처리"] --> T5S["S3 업로드"]
+            end
+        end
+
+        subgraph Sequential["🔄 순차 처리 - ECS Fargate Task"]
+            direction TB
+            IMPORT["DB Import Task<br/>PostgreSQL, ES, Neo4j"] --> MODEL["ML 모델 적용 Task<br/>가격분류, 신뢰도"]
+        end
+    end
+
+    subgraph ServerlessFunction["⚡ 서버리스(함수) 계층"]
+        L1["Lambda<br/>데이터 검증(품질/완성도)"]
+    end
+
+    subgraph Storage["💾 스토리지 계층"]
+        S3[("S3 Bucket<br/>전체 데이터")]
+    end
+
+    subgraph Database["🗄️ 데이터베이스 계층"]
+        RDS[("RDS PostgreSQL<br/>매물 데이터")]
+        ES[("Elasticsearch<br/>검색/벡터")]
+        NEO4J[("Neo4j<br/>그래프 DB")]
+    end
+
+    subgraph Notification["📢 알림 계층"]
+        SNS["SNS Topic"]
+        EMAIL["📧 Email Subscription"]
+    end
+
+    EB -->|"매일 12:00(KST)"| SF
+
+    SF -->|"병렬 실행"| Task1 & Task2 & Task3 & Task4 & Task5
+
+    T1S & T2S & T3S & T4S & T5S -->|"각자 결과 업로드"| S3
+
+    %% ✅ join/집계는 SF가 담당 (병렬 완료 후 다음 스텝으로)
+    SF -->|"병렬 완료 후"| L1
+
+    L1 -->|"검증 통과"| IMPORT
+    L1 -.->|"검증 실패"| SNS
+
+    S3 -->|"전체 데이터"| IMPORT
+
+    IMPORT --> RDS & ES & NEO4J
+    RDS -->|"모델 적용"| MODEL
+    MODEL -->|"결과 저장"| RDS
+
+    SF -->|"성공/실패 알림"| SNS
+    SNS --> EMAIL
+`````
+
+### 병렬 처리 아키텍처 (옵션 1: 권장)
+
+```mermaid
+flowchart TB
+    EB["EventBridge<br/>12:00 KST"]
+    SF["Step Functions"]
+    
+    subgraph Parallel["🔀 병렬 단계 (5개 동시)"]
+        direction LR
+        subgraph T1["Task 1<br/>강남권"]
+            direction TB
+            C1["크롤링"]
+            P1["전처리"]
+            S1["S3"]
+            C1 --> P1 --> S1
+        end
+        subgraph T2["Task 2<br/>중구권"]
+            direction TB
+            C2["크롤링"]
+            P2["전처리"]
+            S2["S3"]
+            C2 --> P2 --> S2
+        end
+        subgraph T3["Task 3<br/>성북권"]
+            direction TB
+            C3["크롤링"]
+            P3["전처리"]
+            S3["S3"]
+            C3 --> P3 --> S3
+        end
+        subgraph T4["Task 4<br/>마포권"]
+            direction TB
+            C4["크롤링"]
+            P4["전처리"]
+            S4["S3"]
+            C4 --> P4 --> S4
+        end
+        subgraph T5["Task 5<br/>금천권"]
+            direction TB
+            C5["크롤링"]
+            P5["전처리"]
+            S5["S3"]
+            C5 --> P5 --> S5
+        end
+    end
+    
+    subgraph Sequential["🔄 순차 단계 (1번만)"]
+        direction TB
+        IMPORT["DB Import Task<br/>S3 전체 데이터"]
+        MODEL["ML Model Task<br/>DB 전체 데이터"]
+        IMPORT --> MODEL
+    end
+    
+    subgraph DB["공유 리소스"]
+        S3DB[("S3<br/>전체 데이터")]
+        RDS[("PostgreSQL")]
+        ES[("Elasticsearch")]
+        NEO4J[("Neo4j")]
+    end
+    
+    SNS["SNS 알림"]
+    
+    EB --> SF
+    SF ==>|"병렬 실행"| T1 & T2 & T3 & T4 & T5
+    S1 & S2 & S3 & S4 & S5 ==> S3DB
+    T1 & T2 & T3 & T4 & T5 ==>|"모두 완료 후"| IMPORT
+    S3DB --> IMPORT
+    IMPORT --> RDS & ES & NEO4J
+    RDS --> MODEL
+    MODEL --> RDS
+    MODEL ==> SNS
+```
+
+> [!IMPORTANT]
+> **중복 방지 설계:**
+> 
+> **병렬 단계 (5개 동시):**
+> - 각 Task는 **자신의 구역만** 크롤링
+> - 전처리 후 **각자 S3에 업로드**
+> - DB Import나 ML 모델은 **실행하지 않음**
+> 
+> **순차 단계 (1번만):**
+> - **S3의 모든 데이터**를 한 번에 Import
+> - **DB의 모든 데이터**에 한 번만 모델 적용
+> - ✅ 중복 없음, 효율적
+
+### 기술 스택
+
+| 구성 요소 | AWS 서비스 | 용도 |
+|----------|-----------|------|
+| 스케줄러 | **EventBridge Scheduler** | 매일 12:00 파이프라인 자동 실행 |
+| 오케스트레이터 | **Step Functions** | 워크플로우 관리 및 에러 핸들링 |
+| 컴퓨팅 | **ECS Fargate** | 크롤러, 전처리, Import, 모델 실행 |
+| 서버리스 함수 | **Lambda** | 데이터 검증, 경량 작업 처리 |
+| 컨테이너 레지스트리 | **ECR** | Docker 이미지 저장 |
+| 데이터 스토리지 | **S3** | 크롤링 데이터 백업 (JSON/Parquet) |
+| 관계형 DB | **RDS PostgreSQL** | 매물 정보 마스터 DB |
+| 검색 엔진 | **Elasticsearch** | 시맨틱 검색 및 추천 |
+| 그래프 DB | **Neo4j (EC2)** | 지역-매물 관계 그래프 |
+| 시크릿 관리 | **Secrets Manager** | DB 자격 증명 보관 |
+| 알림 | **SNS** | 성공/실패 이메일 알림 |
+| 로깅 | **CloudWatch Logs** | 실행 로그 수집 |
+
+> [!TIP]
+> **Lambda 활용 이점:**
+> - 데이터 검증: ECS 대비 99.7% 비용 절감
+> - 실행 시간: 15초 이내 완료
+> - 서버리스: 인프라 관리 불필요
+
+---
+
+## 파이프라인 흐름
+```mermaid
+flowchart TB
+    subgraph Scheduling["⏰ 스케줄링 계층"]
+        EB[("EventBridge<br/>스케줄러")]
+    end
+    
+    subgraph Orchestration["🎭 오케스트레이션 계층"]
+        SF["Step Functions<br/>상태 머신"]
+    end
+    
+    subgraph Parallel["⚙️ 병렬 처리 - 5개 ECS Task"]
+        direction LR
+        subgraph Task1["Task 1: 강남권"]
+            direction TB
+```mermaid
+flowchart TB
+    subgraph Scheduling["⏰ 스케줄링 계층"]
         EB[("EventBridge<br/>스케줄러")]
     end
     
@@ -191,22 +399,35 @@ flowchart TB
 > - **DB의 모든 데이터**에 한 번만 모델 적용
 > - ✅ 중복 없음, 효율적
 
+> ✅ Step Functions 역할 정리 (문서에 넣기 좋은 설명)
+1. Step Functions가 하는 일
+
+- 병렬 실행(5개 크롤링/전처리 Task) 실행/재시도/타임아웃 관리
+- 모든 병렬 작업 완료까지 대기(join)
+- 다음 스텝(Lambda 검증 → Import → Model)을 순차 실행
+- 중간 실패 시 Catch로 실패 분기 + SNS 알림
+
+2. Lambda가 하는 일
+- “워크플로우 제어”가 아니라 검증 로직만
+- 예: S3에 업로드된 파일 개수/스키마/필수 컬럼/중복/날짜/빈 값 비율 등 체크
+- 검증 결과를 Step Functions에 반환(통과/실패)
+
 ### 기술 스택
 
-| 구성 요소 | AWS 서비스 | 용도 |
-|----------|-----------|------|
-| 스케줄러 | **EventBridge Scheduler** | 매일 12:00 파이프라인 자동 실행 |
-| 오케스트레이터 | **Step Functions** | 워크플로우 관리 및 에러 핸들링 |
-| 컴퓨팅 | **ECS Fargate** | 크롤러, 전처리, Import, 모델 실행 |
-| 서버리스 함수 | **Lambda** | 데이터 검증, 경량 작업 처리 |
-| 컨테이너 레지스트리 | **ECR** | Docker 이미지 저장 |
-| 데이터 스토리지 | **S3** | 크롤링 데이터 백업 (JSON/Parquet) |
-| 관계형 DB | **RDS PostgreSQL** | 매물 정보 마스터 DB |
-| 검색 엔진 | **Elasticsearch** | 시맨틱 검색 및 추천 |
-| 그래프 DB | **Neo4j (EC2)** | 지역-매물 관계 그래프 |
-| 시크릿 관리 | **Secrets Manager** | DB 자격 증명 보관 |
-| 알림 | **SNS** | 성공/실패 이메일 알림 |
-| 로깅 | **CloudWatch Logs** | 실행 로그 수집 |
+| 구성 요소      | AWS 서비스               | 역할                            |
+| ---------- | --------------------- | ----------------------------- |
+| 스케줄러       | EventBridge Scheduler | 매일 12:00(KST) 실행 트리거          |
+| 오케스트레이터    | Step Functions        | 병렬 실행 + join + 순차 실행 + 에러 핸들링 |
+| 서버리스(컨테이너) | ECS Fargate           | 크롤링/전처리/Import/모델 적용          |
+| 서버리스(함수)   | Lambda                | 데이터 검증(경량)                    |
+| 저장소        | S3                    | 크롤링 결과/중간 산출물 저장              |
+| RDB        | RDS PostgreSQL        | 매물 마스터/모델 결과 저장               |
+| 검색         | Elasticsearch         | 키워드/벡터 검색 인덱스                 |
+| 그래프        | Neo4j(EC2 등)          | 관계 그래프/추천 근거                  |
+| 알림         | SNS(+ Email 구독)       | 성공/실패 알림                      |
+| 로깅         | CloudWatch Logs       | ECS/Lambda 로그 수집              |
+| 시크릿        | Secrets Manager       | DB/ES/Neo4j 자격증명 관리           |
+
 
 ---
 
