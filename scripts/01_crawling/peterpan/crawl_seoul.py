@@ -17,39 +17,39 @@ LNG_STEP = 0.015
 
 TARGET_ZONES = {
     # --- 1그룹: 강남권 ---
-    # "강남구": {"lat_min": 37.470, "lat_max": 37.535, "lng_min": 127.010, "lng_max": 127.080},
-    # "서초구": {"lat_min": 37.440, "lat_max": 37.520, "lng_min": 126.990, "lng_max": 127.050},
-    # "송파구": {"lat_min": 37.470, "lat_max": 37.530, "lng_min": 127.070, "lng_max": 127.150},
-    # "강동구": {"lat_min": 37.520, "lat_max": 37.580, "lng_min": 127.110, "lng_max": 127.190},
+    "강남구": {"lat_min": 37.470, "lat_max": 37.535, "lng_min": 127.010, "lng_max": 127.080},
+    "서초구": {"lat_min": 37.440, "lat_max": 37.520, "lng_min": 126.990, "lng_max": 127.050},
+    "송파구": {"lat_min": 37.470, "lat_max": 37.530, "lng_min": 127.070, "lng_max": 127.150},
+    "강동구": {"lat_min": 37.520, "lat_max": 37.580, "lng_min": 127.110, "lng_max": 127.190},
 
-    # # --- 2그룹: 서남권 ---
-    # "관악구": {"lat_min": 37.455, "lat_max": 37.490, "lng_min": 126.900, "lng_max": 126.970},
-    # "동작구": {"lat_min": 37.475, "lat_max": 37.515, "lng_min": 126.905, "lng_max": 126.985},
-    # "영등포구": {"lat_min": 37.490, "lat_max": 37.555, "lng_min": 126.880, "lng_max": 126.950},
-    # "구로구": {"lat_min": 37.460, "lat_max": 37.510, "lng_min": 126.810, "lng_max": 126.900},
-    # "금천구": {"lat_min": 37.430, "lat_max": 37.485, "lng_min": 126.870, "lng_max": 126.915},
+    # --- 2그룹: 서남권 ---
+    "관악구": {"lat_min": 37.455, "lat_max": 37.490, "lng_min": 126.900, "lng_max": 126.970},
+    "동작구": {"lat_min": 37.475, "lat_max": 37.515, "lng_min": 126.905, "lng_max": 126.985},
+    "영등포구": {"lat_min": 37.490, "lat_max": 37.555, "lng_min": 126.880, "lng_max": 126.950},
+    "구로구": {"lat_min": 37.460, "lat_max": 37.510, "lng_min": 126.810, "lng_max": 126.900},
+    "금천구": {"lat_min": 37.430, "lat_max": 37.485, "lng_min": 126.870, "lng_max": 126.915},
 
-    # # --- 3그룹: 서북권 ---
-    # "강서구": {"lat_min": 37.530, "lat_max": 37.570, "lng_min": 126.820, "lng_max": 126.880},
-    # "양천구": {"lat_min": 37.505, "lat_max": 37.555, "lng_min": 126.820, "lng_max": 126.890},
-    # "마포구": {"lat_min": 37.535, "lat_max": 37.575, "lng_min": 126.880, "lng_max": 126.960},
-    # "서대문구": {"lat_min": 37.550, "lat_max": 37.600, "lng_min": 126.900, "lng_max": 126.970},
-    # "은평구": {"lat_min": 37.570, "lat_max": 37.650, "lng_min": 126.880, "lng_max": 126.950},
+    # --- 3그룹: 서북권 ---
+    "강서구": {"lat_min": 37.530, "lat_max": 37.570, "lng_min": 126.820, "lng_max": 126.880},
+    "양천구": {"lat_min": 37.505, "lat_max": 37.555, "lng_min": 126.820, "lng_max": 126.890},
+    "마포구": {"lat_min": 37.535, "lat_max": 37.575, "lng_min": 126.880, "lng_max": 126.960},
+    "서대문구": {"lat_min": 37.550, "lat_max": 37.600, "lng_min": 126.900, "lng_max": 126.970},
+    "은평구": {"lat_min": 37.570, "lat_max": 37.650, "lng_min": 126.880, "lng_max": 126.950},
 
-    # # --- 4그룹: 도심 & 성동광진 ---
+    # --- 4그룹: 도심 & 성동광진 ---
     "종로구": {"lat_min": 37.560, "lat_max": 37.630, "lng_min": 126.950, "lng_max": 127.020},
-    # "중구":   {"lat_min": 37.540, "lat_max": 37.570, "lng_min": 126.960, "lng_max": 127.020},
-    # "용산구": {"lat_min": 37.510, "lat_max": 37.555, "lng_min": 126.940, "lng_max": 127.015},
-    # "성동구": {"lat_min": 37.530, "lat_max": 37.575, "lng_min": 127.010, "lng_max": 127.070},
-    # "광진구": {"lat_min": 37.525, "lat_max": 37.575, "lng_min": 127.050, "lng_max": 127.120},
+    "중구":   {"lat_min": 37.540, "lat_max": 37.570, "lng_min": 126.960, "lng_max": 127.020},
+    "용산구": {"lat_min": 37.510, "lat_max": 37.555, "lng_min": 126.940, "lng_max": 127.015},
+    "성동구": {"lat_min": 37.530, "lat_max": 37.575, "lng_min": 127.010, "lng_max": 127.070},
+    "광진구": {"lat_min": 37.525, "lat_max": 37.575, "lng_min": 127.050, "lng_max": 127.120},
 
-    # # --- 5그룹: 동북권 ---
-    # "동대문구": {"lat_min": 37.560, "lat_max": 37.610, "lng_min": 127.020, "lng_max": 127.080},
-    # "중랑구": {"lat_min": 37.570, "lat_max": 37.630, "lng_min": 127.070, "lng_max": 127.120},
-    # "성북구": {"lat_min": 37.575, "lat_max": 37.620, "lng_min": 127.000, "lng_max": 127.070},
-    # "강북구": {"lat_min": 37.610, "lat_max": 37.690, "lng_min": 127.000, "lng_max": 127.050},
-    # "도봉구": {"lat_min": 37.640, "lat_max": 37.690, "lng_min": 127.010, "lng_max": 127.060},
-    # "노원구": {"lat_min": 37.615, "lat_max": 37.670, "lng_min": 127.040, "lng_max": 127.100},
+    # --- 5그룹: 동북권 ---
+    "동대문구": {"lat_min": 37.560, "lat_max": 37.610, "lng_min": 127.020, "lng_max": 127.080},
+    "중랑구": {"lat_min": 37.570, "lat_max": 37.630, "lng_min": 127.070, "lng_max": 127.120},
+    "성북구": {"lat_min": 37.575, "lat_max": 37.620, "lng_min": 127.000, "lng_max": 127.070},
+    "강북구": {"lat_min": 37.610, "lat_max": 37.690, "lng_min": 127.000, "lng_max": 127.050},
+    "도봉구": {"lat_min": 37.640, "lat_max": 37.690, "lng_min": 127.010, "lng_max": 127.060},
+    "노원구": {"lat_min": 37.615, "lat_max": 37.670, "lng_min": 127.040, "lng_max": 127.100},
 }
 
 # ======================================================
@@ -500,7 +500,7 @@ async def run_zone_batch(zone_name):
     master_id_set = load_master_ids()
     current_session_new_ids = set()
 
-    AREA_FILTER_PREFIX = "checkRealSize:999~40||"
+    AREA_FILTER_PREFIX = "checkRealSize:d~40||"
     CATEGORIES = [
         # {"name": "아파트", "base": "https://www.peterpanz.com/apt", "filt": AREA_FILTER_PREFIX + 'buildingType;["아파트"]', "out": f"{zone_name}_아파트.json"},
         # {"name": "원,투룸", "base": "https://www.peterpanz.com/onetworoom", "filt": AREA_FILTER_PREFIX + 'buildingType;["원,투룸"]', "out": f"{zone_name}_원투룸.json"},
@@ -630,11 +630,14 @@ async def run_zone_batch(zone_name):
                         if i > 0 and i % 20 == 0:
                             print(f"  💾 중간 저장 ({len(current_processing_data)}개 데이터)")
                             if current_processing_data:
-                                save_path = os.path.join('data', current_processing_filename)
-                                os.makedirs('data', exist_ok=True)
+                                # 절대 경로 사용
+                                current_dir = os.path.dirname(os.path.abspath(__file__))
+                                data_dir = os.path.join(current_dir, 'data')
+                                os.makedirs(data_dir, exist_ok=True)
+                                save_path = os.path.join(data_dir, current_processing_filename)
                                 with open(save_path, 'w', encoding='utf-8') as f:
                                     json.dump(current_processing_data, f, ensure_ascii=False, indent=2)
-                                print(f"  ✅ 저장 위치: {os.path.abspath(save_path)}")
+                                print(f"  ✅ 저장 위치: {save_path}")
 
                             print(f"  🔄 페이지 재생성 (메모리 최적화)")
                             await page.close()
@@ -760,13 +763,15 @@ async def run_zone_batch(zone_name):
 
                 finally:
                     if current_processing_data:
-                        save_path = os.path.join('data', current_processing_filename)
-                        os.makedirs('data', exist_ok=True)
+                        # 절대 경로 사용
+                        current_dir = os.path.dirname(os.path.abspath(__file__))
+                        data_dir = os.path.join(current_dir, 'data')
+                        os.makedirs(data_dir, exist_ok=True)
+                        save_path = os.path.join(data_dir, current_processing_filename)
                         with open(save_path, 'w', encoding='utf-8') as f:
                             json.dump(current_processing_data, f, ensure_ascii=False, indent=2)
-                        abs_path = os.path.abspath(save_path)
                         print(f"✅ '{current_processing_filename}' 저장 완료 ({len(current_processing_data)}개)")
-                        print(f"   📂 저장 위치: {abs_path}")
+                        print(f"   📂 저장 위치: {save_path}")
                         update_and_save_master_ids(current_session_new_ids)
                         current_session_new_ids.clear()
 
@@ -794,12 +799,11 @@ async def run_zone_batch(zone_name):
 # 5. 실행부
 # ======================================================
 GROUPS = {
-    1: ["종로구"]
-    # 1: ["강남구", "서초구", "송파구", "강동구"],
-    # 2: ["관악구", "동작구", "영등포구", "구로구", "금천구"],
-    # 3: ["강서구", "양천구", "마포구", "서대문구", "은평구"],
-    # 4: ["종로구", "중구", "용산구", "성동구", "광진구"],
-    # 5: ["동대문구", "중랑구", "성북구", "강북구", "도봉구", "노원구"]
+    1: ["강남구", "서초구", "송파구", "강동구"],
+    2: ["관악구", "동작구", "영등포구", "구로구", "금천구"],
+    3: ["강서구", "양천구", "마포구", "서대문구", "은평구"],
+    4: ["종로구", "중구", "용산구", "성동구", "광진구"],
+    5: ["동대문구", "중랑구", "성북구", "강북구", "도봉구", "노원구"]
 }
 
 def run_group(group_number: int):

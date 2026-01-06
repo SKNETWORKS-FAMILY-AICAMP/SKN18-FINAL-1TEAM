@@ -126,7 +126,7 @@ def main():
     
     # Step 4: 가격 분류 모델 적용
     print("\n" + "=" * 80)
-    print(" " * 15 + "🤖 [Step 4/4] 가격 분류 모델 적용 시작")
+    print(" " * 15 + "🤖 [Step 4/5] 가격 분류 모델 적용 시작")
     print("=" * 80)
     analysis_script = base_dir / "03_import" / "price_model" / "apply_price_classification.py"
     if not analysis_script.exists():
@@ -135,7 +135,20 @@ def main():
     else:
         print(f"📍 스크립트: {analysis_script}")
         if not run_script(analysis_script):
-            print("⚠️ 가격 분류 실패, 파이프라인은 완료합니다...")
+            print("⚠️ 가격 분류 실패, 계속 진행합니다...")
+    
+    # Step 5: 중개사 신뢰도 평가 모델 적용
+    print("\n" + "=" * 80)
+    print(" " * 15 + "🏅 [Step 5/5] 중개사 신뢰도 평가 모델 적용 시작")
+    print("=" * 80)
+    trust_model_script = base_dir / "03_import" / "trust" / "predict_trust_scores.py"
+    if not trust_model_script.exists():
+        print(f"⚠️ 신뢰도 평가 스크립트 없음: {trust_model_script}")
+        print("   신뢰도 평가 없이 파이프라인을 완료합니다...")
+    else:
+        print(f"📍 스크립트: {trust_model_script}")
+        if not run_script(trust_model_script):
+            print("⚠️ 신뢰도 평가 실패, 파이프라인은 완료합니다...")
     
     # 완료
     end_time = datetime.now()
