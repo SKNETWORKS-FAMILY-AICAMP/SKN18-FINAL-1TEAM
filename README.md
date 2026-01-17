@@ -13,18 +13,21 @@
   <a href="https://goziphouse.com/">🌐 웹사이트 바로가기</a>
 </p>
 
-
+<p align="center">
   <img src="https://img.shields.io/badge/python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white"/>
   <img src="https://img.shields.io/badge/Django-4.2-092E20?style=for-the-badge&logo=django&logoColor=white"/>
   <img src="https://img.shields.io/badge/FastAPI-0.109-009688?style=for-the-badge&logo=fastapi&logoColor=white"/>
   <img src="https://img.shields.io/badge/Next.js-14-000000?style=for-the-badge&logo=next.js&logoColor=white"/>
   <img src="https://img.shields.io/badge/TypeScript-5.3-3178C6?style=for-the-badge&logo=typescript&logoColor=white"/>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Neo4j-5.15-4581C3?style=for-the-badge&logo=neo4j&logoColor=white"/>
   <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white"/>
   <img src="https://img.shields.io/badge/Elasticsearch-8.17-005571?style=for-the-badge&logo=elasticsearch&logoColor=white"/>
   <img src="https://img.shields.io/badge/LangChain-0.3-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white"/>
   <img src="https://img.shields.io/badge/Docker-24-2496ED?style=for-the-badge&logo=docker&logoColor=white"/>
-
+</p>
 
 ---
 
@@ -75,22 +78,20 @@
   </tr>
 </table>
 
-
 ---
 
 ## 목차
 
-- [프로젝트 소개](#-프로젝트-소개)
-- [핵심 기능](#-핵심-기능)
-- [데이터 규모](#-데이터-규모)
-- [기술 스택](#️-기술-스택)
-- [시스템 아키텍처](#️-시스템-아키텍처)
-- [ML 모델](#-ml-모델)
-- [RAG 챗봇](#-rag-챗봇)
-- [온도 지표](#-온도-지표환경-점수)
-- [배포 아키텍처](#-배포-아키텍처)
-- [문서](#-문서)
-
+- [프로젝트 소개](#프로젝트-소개)
+- [핵심 기능](#핵심-기능)
+- [데이터 규모](#데이터-규모)
+- [기술 스택](#기술-스택)
+- [시스템 아키텍처](#시스템-아키텍처)
+- [ML 모델](#ml-모델)
+- [RAG 챗봇](#rag-챗봇)
+- [온도 지표](#온도-지표환경-점수)
+- [배포 아키텍처](#배포-아키텍처)
+- [문서](#문서)
 
 ---
 
@@ -108,34 +109,29 @@
 
 ### 프로젝트 배경
 
-#### 설문조사 결과(125명 대상)
-
+#### 설문조사 결과 (125명 대상)
 
 **1️⃣ 타 서비스 이용 불편사항**
 
 | 불편사항 | 비율 |
-|---------|------|
+|:--------:|:----:|
 | **허위매물** | 58.3% |
-| **UI/UX** | 16.7% |
-| **정보부족** | 12.5% |
-| **기타** | 8.3% |
-| **매물관리** | 4.2% |
+| UI/UX | 16.7% |
+| 정보부족 | 12.5% |
+| 기타 | 8.3% |
+| 매물관리 | 4.2% |
 
 **2️⃣ 신규 서비스 희망 기능**
 
 | 희망 기능 | 비율 |
-|----------|------|
+|:---------:|:----:|
 | **허위매물 판별** | 25.0% |
 | **매물비교/추천** | 21.4% |
-| **기타** | 17.9% |
-| **검색/필터 개선** | 14.3% |
-| **후기/리뷰** | 10.7% |
-| **실거래가** | 7.1% |
-| **사진/정보** | 3.6% |
-
-</td>
-</tr>
-</table>
+| 기타 | 17.9% |
+| 검색/필터 개선 | 14.3% |
+| 후기/리뷰 | 10.7% |
+| 실거래가 | 7.1% |
+| 사진/정보 | 3.6% |
 
 ### 설문조사 기반 구현 기능
 
@@ -155,11 +151,13 @@
 <td width="50%">
 
 ### 1. AI 챗봇 (RAG)
+
 - 자연어 기반 매물 검색
 - LangGraph 기반 질문 분류 및 응답
 - Neo4j + Elasticsearch 하이브리드 검색
 
 ### 2. 중개사 신뢰도 분석
+
 - **골드/실버/브론즈** 등급 자동 분류
 - **F1-macro 0.74**
 
@@ -167,11 +165,13 @@
 <td width="50%">
 
 ### 3. 가격 적정성 분석
+
 - **저렴/적정/비쌈** 자동 분류
 - **F1-macro 0.73**
 - 지역×건물용도별 상대 시세 비교
 
 ### 4. 온도 지표
+
 - 안전 / 생활편의 / 교통 / 문화 / 반려동물
 - 각 항목 점수화 후 온도(°C)로 표시
 - 평균 기준선: 36.5°C
@@ -202,13 +202,12 @@
 | **서울시 열린 데이터** | 월세 실거래가 + 한국은행 금리 | 가격 적정성 모델 학습 |
 | **공공 데이터** | CCTV, 범죄 통계, 시설, 교통 | 온도 지표 산출 |
 
-
-
 ---
 
 ## 기술 스택
 
 ### Frontend
+
 - **Framework**: Next.js 14 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
@@ -217,17 +216,20 @@
 - **Authentication**: NextAuth.js (Google OAuth)
 
 ### Backend
+
 - **Framework**: Django 4.2 + Django REST Framework
 - **Language**: Python 3.11
 - **API**: FastAPI (RAG 서버, 추천 서버)
 - **Authentication**: JWT (djangorestframework-simplejwt)
 
 ### Database
+
 - **Relational DB**: PostgreSQL 16 + pgvector (벡터 검색)
 - **Graph DB**: Neo4j 5.15 (APOC 플러그인)
 - **Cache**: Redis 7
 
 ### Search Engine
+
 - **Elasticsearch 8.17**
   - **하이브리드 검색**: 키워드 + k-NN 벡터 검색 결합
   - **텍스트 재정렬**: Neo4j 후보를 텍스트 기반 재정렬
@@ -236,16 +238,18 @@
   - **점수 조합**: Neo4j 60% + ES 40%
 
 ### AI/ML
-- **LLM**: OpenAI GPT-4
-- **LLM**: OpenAI gpt-4o-mini
+
+- **LLM**: OpenAI GPT-4, gpt-4o-mini
 - **Framework**: LangChain, LangGraph
 - **ML Libraries**: scikit-learn, LightGBM, XGBoost, SHAP
 - **Embeddings**: OpenAI text-embedding-ada-002
 
 ### Infrastructure
+
 - **Containerization**: Docker, Docker Compose
 
 ### Development Tools
+
 - **Package Manager**: uv (Python), npm (Node.js)
 - **Version Control**: Git, GitHub
 - **Analytics**: Jupyter Notebook
@@ -262,13 +266,13 @@
                                        ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                     Frontend (Next.js 14)                        │
-│  챗봇 UI  │  지도 검색  │  매물 비교  │  찜 목록    │
+│       챗봇 UI  │  지도 검색  │  매물 비교  │  찜 목록             │
 └───────────────────────────────┬──────────────────────────────────┘
                                 │ REST API
                                 ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │                    Backend (Django REST API)                     │
-│         JWT 인증  │  매물 CRUD  │  커뮤니티 API          │
+│            JWT 인증  │  매물 CRUD  │  커뮤니티 API               │
 └────────┬────────────────────┬─────────────────────┬──────────────┘
          │                    │                     │
          ▼                    ▼                     ▼
@@ -276,22 +280,21 @@
 │  RAG Server    │   │  Reco Server   │   │      Data Layer        │
 │  (FastAPI)     │   │  (FastAPI)     │   │ ┌──────┐ ┌──────────┐  │
 │                │   │                │   │ │Neo4j │ │PostgreSQL│  │
-│   LangGraph    │   │ 신뢰도 ML       │   │ └──────┘ └──────────┘  │
-│    챗봇 응답    │   │ 가격 ML         │   │ ┌──────────────┐ ┌───┐ │
+│   LangGraph    │   │  신뢰도 ML     │   │ └──────┘ └──────────┘  │
+│   챗봇 응답    │   │  가격 ML       │   │ ┌──────────────┐ ┌───┐ │
 │                │   │                │   │ │Elasticsearch │ │Red│ │
 └───────┬────────┘   └────────────────┘   │ └──────────────┘ └───┘ │
         │                                 └────────────────────────┘
         ▼
 ┌────────────────┐
 │   OpenAI API   │
-│ GPT-4o-mini    │
+│  GPT-4o-mini   │
 └────────────────┘
 ```
 
 ### 데이터 흐름
 
-
-<summary><b>1️⃣ 매물 검색 흐름</b></summary>
+**1️⃣ 매물 검색 흐름**
 
 ```
 사용자 → Frontend → Backend → Neo4j/Elasticsearch
@@ -301,8 +304,7 @@
               Backend → Frontend → 사용자
 ```
 
-
-<summary><b>2️⃣ 챗봇 대화 흐름</b></summary>
+**2️⃣ 챗봇 대화 흐름**
 
 ```
 사용자 질문 → Frontend → RAG Server → LangGraph Pipeline:
@@ -314,7 +316,7 @@
 → Frontend → 사용자
 ```
 
-<summary><b>3️⃣ ML 모델 추론 흐름</b></summary>
+**3️⃣ ML 모델 추론 흐름**
 
 ```
 매물 데이터 → Reco Server
@@ -332,11 +334,13 @@
 **목적**: 부동산 중개사의 신뢰도를 금/은/동 등급으로 분류
 
 #### 데이터
+
 - **출처**: 크롤링 데이터 + V-WORLD API (중개업소 정보, 중개업자 정보)
 - **규모**: 약 400개 중개사무소
 - **매칭**: 3단계 매칭 (중개사무소명+대표자명, 등록번호+중개사무소명, 중개사무소명+대표자명)
 
 #### 타겟 생성
+
 ```python
 # 1. 거래성사율 계산
 거래성사율 = 거래완료 / (거래완료 + 등록매물)
@@ -368,6 +372,7 @@ Zscore_조정 = Zscore + 대표자구분_가중치
 ### Feature (총 14개)
 
 **1. 실적 지표 (3개)** - log 변환 적용
+
 - 등록매물_log
 - 총거래활동량_log
 - 1인당_거래량_log
@@ -377,50 +382,58 @@ Zscore_조정 = Zscore + 대표자구분_가중치
 > → log 변환으로 이상치 영향 감소 및 스케일 정규화
 
 **2. 인력 지표 (3개)**
+
 - 총_직원수
 - 중개보조원_비율
 - 자격증_보유비율
 
 **3. 경험 지표 (3개)**
+
 - 운영기간_년
 - 숙련도_지수
 - 운영_안정성
 
 **4. 구조 지표 (1개)**
+
 - 대형사무소
 
 **5. 대표자 자격 (2개)**
+
 - 대표_공인중개사
 - 대표_법인
 
 **6. 지역 지표 (2개)**
+
 - 지역_경쟁강도
 - 1층_여부
 
 #### 모델 성능
 
 **최종 성능 지표:**
+
 - Test Accuracy: **73.24%**
 - Train Accuracy: 80.43%
 - 과적합 정도: 7.19%
 - CV Mean: 74.76% (±7.60%)
 
 **등급별 성능 (Test 기준):**
-- 브론즈 등급(0): Precision 0.62, Recall 0.94, F1-Score 0.75
-- 실버 등급(1): Precision 0.75, Recall 0.69, F1-Score 0.72
-- 골드 등급(2): Precision 0.87, Recall 0.65, F1-Score 0.74
+
+| 등급 | Precision | Recall | F1-Score |
+|:----:|:---------:|:------:|:--------:|
+| 브론즈 등급(0) | 0.62 | 0.94 | 0.75 |
+| 실버 등급(1) | 0.75 | 0.69 | 0.72 |
+| 골드 등급(2) | 0.87 | 0.65 | 0.74 |
 
 **특징:**
+
 - 브론즈 등급(신뢰도 낮음) 재현율이 가장 높음 (94%) - 문제 중개사 잘 감지
 - 골드 등급(신뢰도 높음) 정밀도가 가장 높음 (87%) - 우수 중개사 정확히 분류
 
 #### 알고리즘
+
 - **모델**: Logistic Regression
 - **최적화**: GridSearchCV (144개 조합)
-- **하이퍼파라미터**: 
-  - C=1, penalty='l1'
-  - solver='saga'
-  - class_weight='balanced'
+- **하이퍼파라미터**: C=1, penalty='l1', solver='saga', class_weight='balanced'
 
 ![alt text](assets/image-1.png)
 
@@ -469,7 +482,7 @@ Zscore_조정 = Zscore + 대표자구분_가중치
 
 ## RAG 챗봇
 
-### 🔧 LangGraph 파이프라인
+### LangGraph 파이프라인
 
 ```mermaid
 flowchart LR
@@ -482,8 +495,11 @@ flowchart LR
     F --> G[generate]
     G --> H[응답]
 ```
-| 노드 | 파일 (경로) | 역할 |
-|------|-------------|------|
+
+### 노드 구성
+
+| 노드 | 파일 경로 | 역할 |
+|:----:|:----------|:-----|
 | query_analyzer_node | apps/rag/nodes/query_analyzer_node.py | 사용자 질문 분류 및 의도/엔티티 추출 |
 | neo4j_search_node | apps/rag/nodes/neo4j_search_node.py | Neo4j 기반 관계·거리 검색 (후보 탐색) |
 | sql_search_node | apps/rag/nodes/sql_search_node.py | PostgreSQL에서 매물 상세 조회 |
@@ -549,7 +565,7 @@ flowchart LR
 ## 배포 아키텍처
 
 <p align="center">
-  <img src="assets/aws_architecture.png" alt="aws 아키텍처" width="80%"/>
+  <img src="assets/aws_architecture.png" alt="AWS 아키텍처" width="80%"/>
 </p>
 
 ---
@@ -585,7 +601,7 @@ flowchart LR
 </details>
 
 <details>
-<summary><b> ML 모델</b></summary>
+<summary><b>ML 모델</b></summary>
 
 - [PRICE_ML_MODEL.md](docs/PRICE_ML_MODEL.md) - 가격 적정성 모델
 - [trust_model/README.md](apps/reco/trust_model/README.md) - 중개사 신뢰도 모델
