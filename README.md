@@ -258,38 +258,47 @@
 
 ## 시스템 아키텍처
 
-```
-                              ┌─────────────────┐
-                              │     사용자       │
-                              └────────┬────────┘
-                                       │
-                                       ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                     Frontend (Next.js 14)                        │
-│       챗봇 UI  │  지도 검색  │  매물 비교  │  찜 목록             │
-└───────────────────────────────┬──────────────────────────────────┘
-                                │ REST API
-                                ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                    Backend (Django REST API)                     │
-│            JWT 인증  │  매물 CRUD  │  커뮤니티 API               │
-└────────┬────────────────────┬─────────────────────┬──────────────┘
-         │                    │                     │
-         ▼                    ▼                     ▼
-┌────────────────┐   ┌────────────────┐   ┌────────────────────────┐
-│  RAG Server    │   │  Reco Server   │   │      Data Layer        │
-│  (FastAPI)     │   │  (FastAPI)     │   │ ┌──────┐ ┌──────────┐  │
-│                │   │                │   │ │Neo4j │ │PostgreSQL│  │
-│   LangGraph    │   │  신뢰도 ML     │   │ └──────┘ └──────────┘  │
-│   챗봇 응답    │   │  가격 ML       │   │ ┌──────────────┐ ┌───┐ │
-│                │   │                │   │ │Elasticsearch │ │Red│ │
-└───────┬────────┘   └────────────────┘   │ └──────────────┘ └───┘ │
-        │                                 └────────────────────────┘
-        ▼
-┌────────────────┐
-│   OpenAI API   │
-│  GPT-4o-mini   │
-└────────────────┘
+```mermaid
+flowchart TB
+    subgraph CLIENT["Client"]
+        USER[사용자]
+    end
+
+    subgraph FRONTEND["Frontend Layer"]
+        NEXT["Next.js 14<br/>챗봇 UI | 지도 검색 | 매물 비교 | 찜 목록"]
+    end
+
+    subgraph BACKEND["Backend Layer"]
+        DJANGO["Django REST API<br/>JWT 인증 | 매물 CRUD | 커뮤니티 API"]
+    end
+
+    subgraph AI_SERVICES["AI Services"]
+        RAG["RAG Server (FastAPI)<br/>LangGraph | 챗봇 응답"]
+        RECO["Reco Server (FastAPI)<br/>신뢰도 ML | 가격 ML"]
+    end
+
+    subgraph DATA["Data Layer"]
+        NEO4J[(Neo4j)]
+        POSTGRES[(PostgreSQL)]
+        ES[(Elasticsearch)]
+        REDIS[(Redis)]
+    end
+
+    subgraph EXTERNAL["External"]
+        OPENAI["OpenAI API<br/>GPT-4o-mini"]
+    end
+
+    USER --> NEXT
+    NEXT -->|REST API| DJANGO
+    DJANGO --> RAG
+    DJANGO --> RECO
+    DJANGO --> NEO4J
+    DJANGO --> POSTGRES
+    DJANGO --> ES
+    DJANGO --> REDIS
+    RAG --> OPENAI
+    RAG --> NEO4J
+    RAG --> ES
 ```
 
 ### 데이터 흐름
